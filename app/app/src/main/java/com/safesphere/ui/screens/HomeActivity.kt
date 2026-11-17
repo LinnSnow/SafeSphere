@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.safesphere.data.AppDatabase
 import com.safesphere.data.ChartDataRepository
 import com.safesphere.data.WeeklyChartData
 import com.safesphere.ui.charts.HeatmapView
@@ -22,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Home screen: status card (animated shield), the three charts, a plain-language
@@ -31,7 +33,9 @@ import kotlinx.coroutines.launch
 class HomeActivity : Activity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val repository = ChartDataRepository()
+    private val repository by lazy {
+        ChartDataRepository(AppDatabase.getInstance(this).blockedEventDao())
+    }
 
     private lateinit var shield: AnimatedShieldView
     private lateinit var statusTitle: TextView
@@ -78,7 +82,7 @@ class HomeActivity : Activity() {
             addView(statusTexts)
         }
         UiKit.topMargin(this, statusCard, 16)
-        // TODO: drive this from the heartbeat (GET /api/status/{device_id}) when Person 4's code is ready
+        // TODO: drive this from the heartbeat (GET /api/status/{device_id}) when the backend is ready
         showStatus(true, "Live status will come from the backend")
 
         // ---- charts ----
@@ -113,9 +117,10 @@ class HomeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // Load (or reload) the numbers every time the screen comes back
+        // Load (or reload) the numbers every time the screen comes back.
+        // The database read runs on a background thread; drawing stays on the main thread.
         scope.launch {
-            val data = repository.getWeeklyChartData()
+            val data = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
             showData(data)
         }
     }
