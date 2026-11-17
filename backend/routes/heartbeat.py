@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
-from database import device_status
+from database import get_device, save_heartbeat
 from models import Heartbeat
 
 router = APIRouter()
@@ -10,11 +10,7 @@ router = APIRouter()
 
 @router.post("/api/heartbeat")
 def receive_heartbeat(hb: Heartbeat):
-    now = datetime.now(timezone.utc)
-    device_status[hb.device_id] = {
-        "last_seen": now,
-        "vpn_active": hb.vpn_active,
-    }
+    now = save_heartbeat(hb.device_id, hb.vpn_active)
     return {
         "status": "ok",
         "device_id": hb.device_id,
@@ -25,7 +21,7 @@ def receive_heartbeat(hb: Heartbeat):
 
 @router.get("/api/status/{device_id}")
 def get_status(device_id: str):
-    info = device_status.get(device_id)
+    info = get_device(device_id)
     if info is None:
         raise HTTPException(status_code=404, detail="Device not found")
 

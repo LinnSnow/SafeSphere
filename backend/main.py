@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 
+from database import init_db
 from routes import heartbeat, pairing
+
+init_db()  # server start hote hi tables ban jayenge (agar pehle se nahi hain)
 
 app = FastAPI()
 
