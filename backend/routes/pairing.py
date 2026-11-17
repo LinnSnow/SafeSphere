@@ -34,4 +34,10 @@ def confirm_pairing(body: PairConfirm):
     delete_pair_code(body.code)  # code sirf ek baar use ho sakta hai
     save_pairing(body.device_id)
     token = create_token(body.device_id)
-    return {"status": "paired", "device_id": body.device_id, "token": token}
+    parent_token = create_token(body.device_id)
+    return {
+        "status": "paired",
+        "device_id": body.device_id,
+        "token": token,
+        "parent_token": parent_token,
+    }
