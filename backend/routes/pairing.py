@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
+from auth import create_token
 from database import (
     delete_pair_code,
     get_pair_code_expiry,
@@ -32,4 +33,5 @@ def confirm_pairing(body: PairConfirm):
 
     delete_pair_code(body.code)  # code sirf ek baar use ho sakta hai
     save_pairing(body.device_id)
-    return {"status": "paired", "device_id": body.device_id}
+    token = create_token(body.device_id)
+    return {"status": "paired", "device_id": body.device_id, "token": token}
