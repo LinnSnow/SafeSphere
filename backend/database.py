@@ -24,9 +24,17 @@ def init_db():
     conn.execute(
         """CREATE TABLE IF NOT EXISTS pair_codes (
             code TEXT PRIMARY KEY,
-            expires_at TEXT NOT NULL
+            expires_at TEXT NOT NULL,
+            device_id TEXT
         )"""
     )
+    # Purani local database mein device_id column nahi hoga, to add kar do
+    columns = [
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(pair_codes)").fetchall()
+    ]
+    if "device_id" not in columns:
+        conn.execute("ALTER TABLE pair_codes ADD COLUMN device_id TEXT")
     conn.execute(
         """CREATE TABLE IF NOT EXISTS pairings (
             device_id TEXT PRIMARY KEY,
@@ -68,26 +76,29 @@ def get_device(device_id):
 
 # ---------- pairing codes ----------
 
-def save_pair_code(code, seconds=600):
+def save_pair_code(code, device_id, seconds=600):
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
     conn = get_connection()
     conn.execute(
-        "INSERT OR REPLACE INTO pair_codes (code, expires_at) VALUES (?, ?)",
-        (code, expires_at.isoformat()),
+        "INSERT OR REPLACE INTO pair_codes (code, expires_at, device_id) VALUES (?, ?, ?)",
+        (code, expires_at.isoformat(), device_id),
     )
     conn.commit()
     conn.close()
 
 
-def get_pair_code_expiry(code):
+def get_pair_code(code):
     conn = get_connection()
     row = conn.execute(
-        "SELECT expires_at FROM pair_codes WHERE code = ?", (code,)
+        "SELECT expires_at, device_id FROM pair_codes WHERE code = ?", (code,)
     ).fetchone()
     conn.close()
     if row is None:
         return None
-    return datetime.fromisoformat(row["expires_at"])
+    return {
+        "expires_at": datetime.fromisoformat(row["expires_at"]),
+        "device_id": row["device_id"],
+    }
 
 
 def delete_pair_code(code):
