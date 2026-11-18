@@ -17,9 +17,14 @@ router = APIRouter()
 
 @router.post("/api/pair/generate")
 def generate_pair_code():
-    code = f"{random.randint(0, 999999):06d}"
-    save_pair_code(code, seconds=600)
-    return {"code": code, "expires_in_seconds": 600}
+    # Aisa code dhundo jo abhi kisi aur ke liye active na ho
+    for _ in range(10):
+        code = f"{random.randint(0, 999999):06d}"
+        expiry = get_pair_code_expiry(code)
+        if expiry is None or datetime.now(timezone.utc) > expiry:
+            save_pair_code(code, seconds=600)
+            return {"code": code, "expires_in_seconds": 600}
+    raise HTTPException(status_code=503, detail="Could not generate a unique code, try again")
 
 
 @router.post("/api/pair/confirm")
