@@ -26,6 +26,9 @@
             android:name=".ui.screens.TransparencyActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.screens.FamilyActivity"
+            android:exported="false" />
 
     </application>
 

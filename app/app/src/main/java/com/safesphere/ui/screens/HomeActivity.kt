@@ -1,7 +1,6 @@
 package com.safesphere.ui.screens
 
 import android.app.Activity
-import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -26,8 +25,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Home screen: status card (animated shield), the three charts, a plain-language
- * summary, and a button to the transparency screen.
+ * Home ("Shield dashboard"): status card, weekly charts, summary line,
+ * Mutual Visibility note and a button to the transparency screen.
  * Chart numbers come ONLY from ChartDataRepository.getWeeklyChartData().
  */
 class HomeActivity : Activity() {
@@ -37,88 +36,101 @@ class HomeActivity : Activity() {
         ChartDataRepository(AppDatabase.getInstance(this).blockedEventDao())
     }
 
-    private lateinit var shield: AnimatedShieldView
-    private lateinit var statusTitle: TextView
-    private lateinit var statusLine: TextView
     private lateinit var barChart: WeeklyBarChartView
     private lateinit var trendChart: TrendLineChartView
     private lateinit var heatmap: HeatmapView
     private lateinit var summary: TextView
+    private lateinit var totalPill: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val ctx = this
         fun dp(v: Int) = UiKit.dp(ctx, v)
 
-        // ---- header: app name + settings gear ----
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(UiKit.text(ctx, "SafeSphere", 28f, bold = true).apply {
-                layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f)
-            })
-            addView(UiKit.text(ctx, "⚙", 26f, UiKit.MUTED).apply {
-                setPadding(dp(8), dp(4), dp(8), dp(4))
-                // TODO: open ProtectionSettingsActivity (PIN-gated) once it exists
-                setOnClickListener {
-                    Toast.makeText(ctx, "Settings: coming soon", Toast.LENGTH_SHORT).show()
-                }
-            })
-        }
-
         // ---- status card ----
-        shield = AnimatedShieldView(this).apply { layoutParams = LinearLayout.LayoutParams(dp(72), dp(72)) }
-        statusTitle = UiKit.text(ctx, "", 18f, UiKit.GREEN, bold = true)
-        statusLine = UiKit.text(ctx, "", 13f, UiKit.MUTED)
+        val shield = AnimatedShieldView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
+            setState(ShieldState.ON)
+        }
+        val gear = UiKit.roundIcon(ctx, "⚙", 40, UiKit.BLUE_SOFT, UiKit.BLUE_DARK, 20f).apply {
+            // TODO: open ProtectionSettingsActivity (PIN-gated) once it exists
+            setOnClickListener {
+                Toast.makeText(ctx, "Protection settings: coming soon", Toast.LENGTH_SHORT).show()
+            }
+        }
         val statusTexts = UiKit.vertical(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = dp(12) }
-            addView(statusTitle)
-            addView(statusLine)
+            addView(UiKit.text(ctx, "Protection is ON", 20f, UiKit.INK, bold = true))
+            // TODO: real "last checked" time from the heartbeat (GET /api/status/{device_id})
+            addView(UiKit.text(ctx, "Last checked 2 min ago", 12f, UiKit.MUTED))
         }
-        val statusCard = UiKit.card(this).apply {
+        val statusRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(shield)
             addView(statusTexts)
+            addView(gear)
         }
-        UiKit.topMargin(this, statusCard, 16)
-        // TODO: drive this from the heartbeat (GET /api/status/{device_id}) when the backend is ready
-        showStatus(true, "Live status will come from the backend")
+        val statusCard = UiKit.card(this).apply {
+            background = UiKit.rounded(
+                Color.parseColor("#EAF8F1"), dp(16).toFloat(), Color.parseColor("#CDEBDD"), dp(1)
+            )
+            addView(statusRow)
+            addView(UiKit.statusPills(ctx).also { UiKit.topMargin(ctx, it, 14) })
+        }
+        UiKit.topMargin(this, statusCard, 8)
 
         // ---- charts ----
         barChart = WeeklyBarChartView(this)
         trendChart = TrendLineChartView(this)
         heatmap = HeatmapView(this)
-        summary = UiKit.text(ctx, "", 14f, UiKit.MUTED).apply { setPadding(0, dp(8), 0, 0) }
+        totalPill = UiKit.pill(ctx, "0 total blocked", UiKit.BLUE_DARK, UiKit.BLUE_SOFT)
+        summary = UiKit.text(ctx, "", 13f, UiKit.INK)
 
-        val barCard = chartCard("Blocked this week", barChart, 240)
-        val trendCard = chartCard("Trend", trendChart, 220)
-        val heatmapCard = chartCard("When did it happen?", heatmap, 340).apply { addView(summary) }
+        val barCard = chartCard("Blocked this week", "Websites & trackers kept out", totalPill, barChart, 220)
+        val trendCard = chartCard("Trend", "Daily activity this week", null, trendChart, 200)
+        val heatmapCard = chartCard("When did it happen?", "Time slots vs. weekly cadence", null, heatmap, 340)
+        heatmapCard.addView(UiKit.infoBox(ctx, "↗", summary).also { UiKit.topMargin(ctx, it, 12) })
 
-        // ---- button ----
+        // ---- mutual visibility + button ----
+        val mutualTexts = UiKit.vertical(this).apply {
+            addView(UiKit.text(ctx, "Mutual Visibility", 14f, UiKit.INK, bold = true))
+            addView(UiKit.text(ctx, "Zero hidden keystrokes or camera access", 12f, UiKit.MUTED))
+        }
+        val mutual = UiKit.infoBox(ctx, "👁", mutualTexts)
+        UiKit.topMargin(this, mutual, 16)
+
         val seeButton = UiKit.button(this, "What does this app see?", filled = false) {
-            startActivity(Intent(ctx, TransparencyActivity::class.java))
+            Nav.open(ctx, Tab.SHARED)
         }
 
         val column = UiKit.vertical(this).apply {
-            setPadding(dp(16), dp(48), dp(16), dp(32))
-            addView(header)
+            setPadding(dp(16), dp(8), dp(16), dp(24))
             addView(statusCard)
             addView(barCard)
             addView(trendCard)
             addView(heatmapCard)
+            addView(mutual)
             addView(seeButton)
         }
-        setContentView(ScrollView(this).apply {
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor(UiKit.BG))
-            addView(column)
-        })
+            addView(UiKit.topBar(ctx, "Shield Dashboard"))
+            addView(ScrollView(ctx).apply {
+                layoutParams = LinearLayout.LayoutParams(UiKit.MATCH, 0, 1f)
+                addView(column)
+            })
+            addView(Nav.bar(ctx, Tab.SHIELD))
+        }
+        UiKit.padForSystemBars(root)
+        setContentView(root)
     }
 
     override fun onResume() {
         super.onResume()
         // Load (or reload) the numbers every time the screen comes back.
-        // The database read runs on a background thread; drawing stays on the main thread.
         scope.launch {
             val data = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
             showData(data)
@@ -134,14 +146,8 @@ class HomeActivity : Activity() {
         barChart.setData(data.dailyCounts)
         trendChart.setData(data.dailyCounts)
         heatmap.setData(data.heatmap)
+        totalPill.text = "${data.dailyCounts.sum()} total blocked"
         summary.text = summarize(data.heatmap)
-    }
-
-    private fun showStatus(active: Boolean, detail: String) {
-        shield.setState(if (active) ShieldState.ON else ShieldState.ALERT)
-        statusTitle.text = if (active) "Protection is ON" else "Protection may be off"
-        statusTitle.setTextColor(Color.parseColor(if (active) UiKit.GREEN else UiKit.RED))
-        statusLine.text = detail
     }
 
     /** "Most events happen on Saturday evenings." built from the 28 heatmap numbers. */
@@ -154,12 +160,26 @@ class HomeActivity : Activity() {
         return "Most events happen on ${days[i / 4]} ${blocks[i % 4]}."
     }
 
-    private fun chartCard(title: String, chart: View, heightDp: Int): LinearLayout {
-        val card = UiKit.card(this)
-        card.addView(UiKit.text(this, title, 16f, bold = true))
-        chart.layoutParams = LinearLayout.LayoutParams(UiKit.MATCH, UiKit.dp(this, heightDp))
+    private fun chartCard(
+        title: String, subtitle: String, badge: View?, chart: View, heightDp: Int
+    ): LinearLayout {
+        val ctx = this
+        val card = UiKit.card(ctx)
+        val titles = UiKit.vertical(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f)
+            addView(UiKit.text(ctx, title, 17f, UiKit.INK, bold = true))
+            addView(UiKit.text(ctx, subtitle, 12f, UiKit.MUTED))
+        }
+        card.addView(LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(titles)
+            if (badge != null) addView(badge)
+        })
+        chart.layoutParams = LinearLayout.LayoutParams(UiKit.MATCH, UiKit.dp(ctx, heightDp))
+            .apply { topMargin = UiKit.dp(ctx, 12) }
         card.addView(chart)
-        UiKit.topMargin(this, card, 16)
+        UiKit.topMargin(ctx, card, 16)
         return card
     }
 }
