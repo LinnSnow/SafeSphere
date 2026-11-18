@@ -7,6 +7,11 @@ class Heartbeat(BaseModel):
     vpn_active: bool
 
 
-class PairConfirm(BaseModel):
-    code: str
+class PairGenerate(BaseModel):
+    # Teen phone code banate waqt apna device_id bhejta hai
     device_id: str
+
+
+class PairConfirm(BaseModel):
+    # Parent phone sirf code bhejta hai, device_id backend khud nikalta hai
+    code: str
