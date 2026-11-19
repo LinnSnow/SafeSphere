@@ -1,0 +1,25 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+
+# Python / Colab
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+ml_training/output/hf_model/
+ml_training/safesphere_android_assets.zip
+
+# TFLite model (too large for GitHub, generate from Colab)
+*.tflite
+
+# Duplicate source tree from zip extraction
+app/app/
