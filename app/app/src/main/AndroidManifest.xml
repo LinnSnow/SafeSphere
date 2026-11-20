@@ -37,6 +37,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.screens.RoleActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.screens.TeenCodeActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.screens.PairActivity"
             android:exported="false" />
 

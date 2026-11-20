@@ -11,26 +11,33 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.safesphere.data.ApiClient
+import com.safesphere.data.PairConfirmRequest
+import com.safesphere.data.TokenStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import java.io.IOException
 
 /**
- * "Pair with Teen Device": the parent types the 6-digit code shown on the other device.
- * The SERVER decides if the code is good. This screen only shows the answer:
- *   invalid / already used (404), expired (400), no connection.
+ * Parent's phone: types the 6-digit code shown on the teen's phone.
+ * The SERVER decides: 404 = invalid or already used, 400 = expired, 503 = try again, IOException = no connection.
  */
 class PairActivity : Activity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val store by lazy { TokenStore(this) }
     private val codeLength = 6
     private var code = ""
     private var busy = false
 
     private lateinit var boxes: CodeBoxes
     private lateinit var errorText: TextView
+    private lateinit var waitNote: TextView
     private lateinit var pairButton: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,14 +75,14 @@ class PairActivity : Activity() {
         val pad = Widgets.keypad(
             ctx,
             onDigit = { d ->
-                if (code.length < codeLength) {
+                if (!busy && code.length < codeLength) {
                     code += d
                     boxes.setValue(code)
                     clearError()
                 }
             },
             onDelete = {
-                if (code.isNotEmpty()) {
+                if (!busy && code.isNotEmpty()) {
                     code = code.dropLast(1)
                     boxes.setValue(code)
                     clearError()
@@ -101,6 +108,13 @@ class PairActivity : Activity() {
         UiKit.topMargin(this, syncBox, 16)
 
         pairButton = UiKit.button(this, "Pair devices", filled = true) { submit() }
+        waitNote = UiKit.text(
+            ctx, "Connecting… the server can take up to a minute to wake up.", 12f, UiKit.MUTED
+        ).apply {
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        UiKit.topMargin(ctx, waitNote, 8)
 
         val help = UiKit.text(ctx, "Need help finding the code? Tap here", 13f, UiKit.BLUE_DARK, bold = true)
             .apply {
@@ -110,8 +124,9 @@ class PairActivity : Activity() {
                     AlertDialog.Builder(ctx)
                         .setTitle("Where do I find the code?")
                         .setMessage(
-                            "On the other device, open SafeSphere and look for the 6-digit pairing code. " +
-                                    "It works for 10 minutes. If it stops working, ask for a new code."
+                            "On the teen's phone, open SafeSphere and choose \"I'm the teen\". " +
+                                    "The 6-digit code is shown there and works for 10 minutes. " +
+                                    "If it stops working, ask for a new code."
                         )
                         .setPositiveButton("Got it", null)
                         .show()
@@ -128,6 +143,7 @@ class PairActivity : Activity() {
             addView(codeCard)
             addView(syncBox)
             addView(pairButton)
+            addView(waitNote)
             addView(help)
         }
         val root = LinearLayout(this).apply {
@@ -149,32 +165,39 @@ class PairActivity : Activity() {
             return
         }
         busy = true
-        pairButton.text = "Pairing…"
+        pairButton.text = "Connecting…"
+        pairButton.alpha = 0.6f
+        waitNote.visibility = View.VISIBLE
         scope.launch {
-            // TODO: replace PairingStub with the real call to the backend.
-            val result = PairingStub.pair(code)
-            busy = false
-            pairButton.text = "Pair devices"
-            when (result) {
-                PairResult.SUCCESS -> onPaired()
-                PairResult.INVALID_CODE -> showError(
-                    "That code isn't valid or has already been used. Ask for a new code and try again."
-                )
-                PairResult.EXPIRED -> showError(
-                    "That code has expired. Codes last 10 minutes, so ask for a new one."
-                )
-                PairResult.NO_NETWORK -> showError(
-                    "Couldn't reach the server. Check your internet and try again."
-                )
+            try {
+                val res = ApiClient.apiService.pairConfirm(PairConfirmRequest(code))
+                store.savePairing(res.deviceId, res.parentToken)
+                onPaired()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: HttpException) {
+                when (e.code()) {
+                    404 -> showError("That code isn't valid or has already been used. Ask for a new code and try again.")
+                    400 -> showError("That code has expired. Codes last 10 minutes, so ask for a new one.")
+                    503 -> showError("The server couldn't prepare the link. Please try again.")
+                    else -> showError("Something went wrong (error ${e.code()}). Please try again.")
+                }
+            } catch (e: IOException) {
+                showError("Couldn't reach the server. Check your internet and try again.")
+            } finally {
+                busy = false
+                pairButton.text = "Pair devices"
+                pairButton.alpha = 1f
+                waitNote.visibility = View.GONE
             }
         }
     }
 
     private fun onPaired() {
-        // TODO (Batch 2b): go on to Step 1 (VPN) and Step 2 (notifications), then the parent PIN.
+        AppPrefs.setSetupDone(this, true)
         Toast.makeText(this, "Devices paired", Toast.LENGTH_SHORT).show()
         startActivity(
-            Intent(this, HomeActivity::class.java)
+            Intent(this, FamilyActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         )
     }
