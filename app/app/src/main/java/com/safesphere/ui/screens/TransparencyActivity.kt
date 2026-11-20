@@ -13,7 +13,7 @@ import android.widget.TextView
 /**
  * "What does this app see?" in the Stitch design.
  * Opened from the Shared tab: shows the bottom bar.
- * Opened during first-time setup (EXTRA_ONBOARDING): shows a Continue button to the Pair screen.
+ * Opened during first-time setup (EXTRA_ONBOARDING): shows a Continue button to the role choice.
  */
 class TransparencyActivity : Activity() {
 
@@ -200,7 +200,7 @@ class TransparencyActivity : Activity() {
                 setBackgroundColor(Color.parseColor(UiKit.BG))
                 setPadding(dp(16), dp(4), dp(16), dp(12))
                 addView(UiKit.button(ctx, "Continue  →", filled = true) {
-                    startActivity(Intent(ctx, PairActivity::class.java))
+                    startActivity(Intent(ctx, RoleActivity::class.java))
                 })
             }
         } else {

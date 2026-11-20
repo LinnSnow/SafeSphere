@@ -27,7 +27,12 @@ class WelcomeActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (AppPrefs.isSetupDone(this)) {
-            startActivity(Intent(this, HomeActivity::class.java))
+            val home = if (AppPrefs.getRole(this) == AppPrefs.ROLE_PARENT) {
+                FamilyActivity::class.java
+            } else {
+                HomeActivity::class.java
+            }
+            startActivity(Intent(this, home))
             finish()
             return
         }
