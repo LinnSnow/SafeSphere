@@ -6,6 +6,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 // ---------- Request / Response data classes ----------
 
@@ -41,8 +42,43 @@ data class StatusResponse(
     @SerializedName("last_seen_minutes_ago") val lastSeenMinutesAgo: Int
 )
 
+// ---------- v2: events, weekly, pair state, unpair ----------
+
+data class EventItemRequest(
+    @SerializedName("timestamp") val timestamp: Long,   // epoch millis UTC
+    @SerializedName("category") val category: String    // "website" ya "text"
+)
+
+data class EventsUploadRequest(
+    @SerializedName("device_id") val deviceId: String,
+    @SerializedName("events") val events: List<EventItemRequest>
+)
+
+data class EventsUploadResponse(
+    @SerializedName("received") val received: Int,
+    @SerializedName("saved") val saved: Int
+)
+
+data class WeeklyResponse(
+    @SerializedName("week_start") val weekStart: String,
+    @SerializedName("daily_counts") val dailyCounts: List<Int>,
+    @SerializedName("heatmap") val heatmap: List<Int>
+)
+
+data class PairStateResponse(
+    @SerializedName("paired") val paired: Boolean
+)
+
+data class UnpairResponse(
+    @SerializedName("status") val status: String
+)
+
 // ---------- Retrofit interface ----------
 // bearer parameter me poora "Bearer <token>" pass karna hai.
+// Teen calls (heartbeat, uploadEvents, pairState) me TEEN token,
+// parent calls (weekly, unpair) me PARENT token.
+// status() dono token ke saath chalta hai.
+// Koi bhi 401 = unpaired/revoked, app ko state reset karni chahiye.
 
 interface ApiService {
 
@@ -67,4 +103,28 @@ interface ApiService {
         @Header("Authorization") bearer: String,
         @Path("device_id") deviceId: String
     ): StatusResponse
+
+    @POST("api/events")
+    suspend fun uploadEvents(
+        @Header("Authorization") bearer: String,
+        @Body body: EventsUploadRequest
+    ): EventsUploadResponse
+
+    @GET("api/weekly/{device_id}")
+    suspend fun weekly(
+        @Header("Authorization") bearer: String,
+        @Path("device_id") deviceId: String,
+        @Query("tz_offset_minutes") tzOffsetMinutes: Int
+    ): WeeklyResponse
+
+    @GET("api/pair/state/{device_id}")
+    suspend fun pairState(
+        @Header("Authorization") bearer: String,
+        @Path("device_id") deviceId: String
+    ): PairStateResponse
+
+    @POST("api/unpair")
+    suspend fun unpair(
+        @Header("Authorization") bearer: String
+    ): UnpairResponse
 }
