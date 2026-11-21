@@ -16,7 +16,7 @@ class RoleActivity : Activity() {
         val ctx = this
         fun dp(v: Int) = UiKit.dp(ctx, v)
 
-        val back = UiKit.roundIcon(ctx, "←", 40, "#E8EEFD", UiKit.INK, 18f).apply {
+        val back = UiKit.roundIcon(ctx, "←", 40, "#E7EEFF", UiKit.INK, 18f).apply {
             setOnClickListener { finish() }
         }
         val title = UiKit.text(ctx, "Who is using this phone?", 24f, UiKit.INK, bold = true)

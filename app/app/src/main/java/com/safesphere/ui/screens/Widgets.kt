@@ -4,17 +4,19 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.view.Gravity
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Reusable pieces: feature rows, number keypad, code boxes. */
 object Widgets {
 
-    /** Soft row with a round mark (✓ or ✕), a bold title and a small description. */
+    /** Soft row with a round mark (tick or cross), a bold title and a small description. */
     fun featureRow(
         ctx: Context, title: String, desc: String,
         mark: String = "✓", markBgHex: String = UiKit.GREEN_SOFT, markFgHex: String = UiKit.GREEN_DARK
     ): LinearLayout {
+        val iconName = if (mark == "✕" || mark == "x") "x" else "check"
         val texts = UiKit.vertical(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = UiKit.dp(ctx, 12) }
             addView(UiKit.text(ctx, title, 14f, UiKit.INK, bold = true))
@@ -27,9 +29,9 @@ object Widgets {
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = UiKit.rounded(Color.parseColor("#F1F4FD"), UiKit.dp(ctx, 12).toFloat())
+            background = UiKit.rounded(Color.parseColor(Pal.SURFACE), UiKit.dp(ctx, 12).toFloat())
             setPadding(UiKit.dp(ctx, 12), UiKit.dp(ctx, 12), UiKit.dp(ctx, 12), UiKit.dp(ctx, 12))
-            addView(UiKit.roundIcon(ctx, mark, 28, markBgHex, markFgHex, 14f))
+            addView(Icons.circle(ctx, iconName, 28, markBgHex, markFgHex))
             addView(texts)
         }
     }
@@ -47,20 +49,34 @@ object Widgets {
                 addView(LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
                     row.forEach { key ->
-                        addView(TextView(ctx).apply {
-                            text = key
-                            textSize = 22f
-                            gravity = Gravity.CENTER
-                            setTextColor(Color.parseColor(UiKit.INK))
+                        val cell = FrameLayout(ctx).apply {
                             layoutParams = LinearLayout.LayoutParams(0, UiKit.dp(ctx, 52), 1f).apply {
                                 val m = UiKit.dp(ctx, 6)
                                 setMargins(m, m, m, m)
                             }
-                            if (key.isNotEmpty()) {
-                                background = UiKit.rounded(Color.parseColor("#E8EEFD"), UiKit.dp(ctx, 26).toFloat())
-                                setOnClickListener { if (key == "⌫") onDelete() else onDigit(key[0]) }
+                        }
+                        if (key.isNotEmpty()) {
+                            cell.background = UiKit.rounded(Color.parseColor(Pal.CONTAINER), UiKit.dp(ctx, 26).toFloat())
+                            cell.setOnClickListener { if (key == "⌫") onDelete() else onDigit(key[0]) }
+                            if (key == "⌫") {
+                                cell.addView(IconView(ctx, "delete", Pal.INK).apply {
+                                    layoutParams = FrameLayout.LayoutParams(
+                                        UiKit.dp(ctx, 24), UiKit.dp(ctx, 24), Gravity.CENTER
+                                    )
+                                })
+                            } else {
+                                cell.addView(TextView(ctx).apply {
+                                    text = key
+                                    textSize = 22f
+                                    gravity = Gravity.CENTER
+                                    setTextColor(Color.parseColor(Pal.INK))
+                                    layoutParams = FrameLayout.LayoutParams(
+                                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+                                    )
+                                })
                             }
-                        })
+                        }
+                        addView(cell)
                     }
                 })
             }
@@ -118,7 +134,7 @@ class CodeBoxes(private val ctx: Context, private val length: Int, private val m
                 else -> "•"
             }
             cell.setTextColor(Color.parseColor(if (filled) UiKit.INK else "#9AA7BD"))
-            val fill = if (current) Color.WHITE else Color.parseColor("#EEF1FB")
+            val fill = if (current) Color.WHITE else Color.parseColor(Pal.CONTAINER)
             val stroke: Int? = when {
                 error -> Color.parseColor(UiKit.RED)
                 current -> Color.parseColor(UiKit.BLUE)

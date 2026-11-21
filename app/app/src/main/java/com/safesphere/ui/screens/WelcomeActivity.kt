@@ -5,6 +5,8 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -67,7 +69,7 @@ class WelcomeActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(howTitles)
-                addView(UiKit.roundIcon(ctx, "👁", 32, UiKit.BLUE_SOFT, UiKit.BLUE_DARK, 14f))
+                addView(Icons.circle(ctx, "eye", 32, UiKit.BLUE_SOFT, UiKit.BLUE_DARK))
             })
             val rows = listOf(
                 "We block adult websites" to "Filters out harmful content seamlessly across every browser.",
@@ -75,7 +77,7 @@ class WelcomeActivity : Activity() {
                 "Your parent only sees weekly counts, not content" to "High-level activity metrics foster trust without micro-monitoring."
             )
             rows.forEach { (t, d) ->
-                addView(Widgets.featureRow(ctx, t, d).also { UiKit.topMargin(ctx, it, 10) })
+                addView(featureRow(t, d).also { UiKit.topMargin(ctx, it, 10) })
             }
             addView(
                 UiKit.infoBox(
@@ -165,22 +167,41 @@ class WelcomeActivity : Activity() {
         continueButton.alpha = if (n == 2) 1f else 0.45f
     }
 
+    /** A light row with a green tick badge, a title and a description. */
+    private fun featureRow(title: String, desc: String): LinearLayout {
+        val ctx = this
+        val texts = UiKit.vertical(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = UiKit.dp(ctx, 12) }
+            addView(UiKit.text(ctx, title, 14f, UiKit.INK, bold = true))
+            addView(UiKit.text(ctx, desc, 12f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(ctx, 2), 0, 0) })
+        }
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = UiKit.rounded(Color.parseColor("#F0F3FF"), UiKit.dp(ctx, 14).toFloat())
+            setPadding(UiKit.dp(ctx, 12), UiKit.dp(ctx, 12), UiKit.dp(ctx, 12), UiKit.dp(ctx, 12))
+            addView(Icons.circle(ctx, "check", 28, UiKit.GREEN_SOFT, UiKit.GREEN_DARK))
+            addView(texts)
+        }
+    }
+
     /** A tick-box row. Tapping anywhere on the row toggles it. */
     private fun agreeRow(title: String, sub: String, onChange: (Boolean) -> Unit): LinearLayout {
         val ctx = this
         var checked = false
-        val box = TextView(ctx).apply {
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTextColor(Color.WHITE)
+        val tick = IconView(ctx, "check", "#FFFFFF").apply {
+            layoutParams = FrameLayout.LayoutParams(UiKit.dp(ctx, 16), UiKit.dp(ctx, 16), Gravity.CENTER)
+        }
+        val box = FrameLayout(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(UiKit.dp(ctx, 26), UiKit.dp(ctx, 26))
+            addView(tick)
         }
         fun paint() {
             if (checked) {
-                box.text = "✓"
+                tick.visibility = View.VISIBLE
                 box.background = UiKit.rounded(Color.parseColor(UiKit.BLUE), UiKit.dp(ctx, 8).toFloat())
             } else {
-                box.text = ""
+                tick.visibility = View.INVISIBLE
                 box.background = UiKit.rounded(
                     Color.WHITE, UiKit.dp(ctx, 8).toFloat(), Color.parseColor("#B6C2DA"), UiKit.dp(ctx, 2)
                 )
@@ -195,7 +216,7 @@ class WelcomeActivity : Activity() {
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = UiKit.rounded(Color.parseColor("#F1F4FD"), UiKit.dp(ctx, 12).toFloat())
+            background = UiKit.rounded(Color.parseColor("#F0F3FF"), UiKit.dp(ctx, 12).toFloat())
             setPadding(UiKit.dp(ctx, 12), UiKit.dp(ctx, 12), UiKit.dp(ctx, 12), UiKit.dp(ctx, 12))
             addView(box)
             addView(texts)

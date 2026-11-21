@@ -7,12 +7,12 @@ import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.Toast
 
-/** The four bottom-bar tabs. */
+/** The four bottom-bar tabs. The first text is an icon name (see Icons.kt). */
 enum class Tab(val icon: String, val label: String) {
-    SHIELD("🛡", "Shield"),
-    SHARED("👁", "Shared"),
-    LIMITS("☑", "Limits"),
-    FAMILY("👥", "Family")
+    SHIELD("shield", "Shield"),
+    SHARED("eye", "Shared"),
+    LIMITS("check-square", "Limits"),
+    FAMILY("users", "Family")
 }
 
 /** Bottom bar + opening the right screen for each tab. */
@@ -27,17 +27,15 @@ object Nav {
             setPadding(0, UiKit.dp(ctx, 8), 0, UiKit.dp(ctx, 8))
             Tab.values().forEach { tab ->
                 val active = tab == selected
-                val color = if (active) UiKit.BLUE else UiKit.MUTED
+                val color = if (active) UiKit.BLUE_DARK else "#737685"
                 addView(UiKit.vertical(ctx).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
                     layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f)
                     setPadding(0, UiKit.dp(ctx, 4), 0, UiKit.dp(ctx, 4))
-                    addView(UiKit.text(ctx, tab.icon, 20f, color).apply {
-                        gravity = Gravity.CENTER
-                        alpha = if (active) 1f else 0.5f
-                    })
+                    addView(Icons.icon(ctx, tab.icon, 24, color))
                     addView(UiKit.text(ctx, tab.label, 12f, color, bold = active).apply {
                         gravity = Gravity.CENTER
+                        setPadding(0, UiKit.dp(ctx, 2), 0, 0)
                     })
                     setOnClickListener { open(activity, tab) }
                 })
@@ -50,7 +48,7 @@ object Nav {
             Tab.SHIELD -> HomeActivity::class.java
             Tab.SHARED -> TransparencyActivity::class.java
             Tab.FAMILY -> FamilyActivity::class.java
-            Tab.LIMITS -> null   // TODO: Limits / permissions screen
+            Tab.LIMITS -> LimitsActivity::class.java
         }
         if (target == null) {
             Toast.makeText(from, "Limits: coming soon", Toast.LENGTH_SHORT).show()

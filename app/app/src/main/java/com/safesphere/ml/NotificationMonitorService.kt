@@ -3,7 +3,9 @@ package com.safesphere.ml
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -12,6 +14,8 @@ import androidx.core.app.NotificationCompat
 import com.safesphere.data.AppDatabase
 import com.safesphere.data.BlockEventLogger
 import com.safesphere.data.BlockEventLoggerImpl
+import com.safesphere.ui.screens.AppPrefs
+import com.safesphere.ui.screens.TextWarningActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,9 +26,10 @@ import kotlinx.coroutines.launch
  * Listens to notifications from OTHER apps (WhatsApp, SMS, Instagram...), scores the text with
  * the on-device ML model, and if it looks adult-toned:
  *   1. logs a block event (timestamp + category "text" ONLY - never the message), and
- *   2. shows a warning notification to the teen.
+ *   2. shows a warning notification to the teen. Tapping it opens the Text Warning screen.
  *
- * The user must grant "Notification access" manually (Settings). See NotificationAccess.
+ * The message text is only handed to the Text Warning screen inside that notification's intent
+ * (in memory). It is never written to disk, the database, the logs or the network.
  */
 class NotificationMonitorService : NotificationListenerService() {
 
@@ -64,6 +69,7 @@ class NotificationMonitorService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return // never scan our own warnings (infinite loop!)
         if (sbn.isOngoing) return                    // music players, downloads, etc.
+        if (!AppPrefs.isProtectionActive(applicationContext)) return // protection is off or paused
 
         val notification = sbn.notification ?: return
         if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return // "3 new messages" bundles
@@ -79,7 +85,7 @@ class NotificationMonitorService : NotificationListenerService() {
                 val score = model.classify(text)
                 if (score > model.threshold) {
                     logger.logBlock("text")
-                    showWarning()
+                    showWarning(text)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "classification failed", e) // do NOT log the message text
@@ -98,13 +104,23 @@ class NotificationMonitorService : NotificationListenerService() {
         return joined.ifEmpty { null }
     }
 
-    private fun showWarning() {
+    private fun showWarning(text: String) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val open = Intent(this, TextWarningActivity::class.java)
+            .putExtra(TextWarningActivity.EXTRA_MESSAGE, text)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pending = PendingIntent.getActivity(
+            this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // The notification itself never contains the message, only the generic warning.
         val n = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert) // swap for your own icon
             .setContentTitle("SafeSphere warning")
-            .setContentText("A message you just received may contain inappropriate content.")
+            .setContentText("A message you just received may contain inappropriate content. Tap to review.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pending)
             .setAutoCancel(true)
             .build()
         // Android 13+: if POST_NOTIFICATIONS isn't granted, this is silently dropped (no crash).

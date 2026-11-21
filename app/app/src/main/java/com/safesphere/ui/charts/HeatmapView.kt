@@ -8,12 +8,13 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.max
+import kotlin.math.min
 
 /**
- * Heatmap: 7 days x 4 time blocks = 28 cells.
+ * Heatmap: 7 days (columns) x 4 time blocks (rows) = 28 cells.
  * Index formula (from the team data contract): values[day * 4 + timeBlock]
- * Time blocks: 0 = 00-06, 1 = 06-12, 2 = 12-18, 3 = 18-24
- * Colour goes from light yellow (few events) to dark red (many events).
+ * Time blocks: 0 = 00-06 (Night), 1 = 06-12 (Morn), 2 = 12-18 (Aftn), 3 = 18-24 (Eve)
+ * Empty cells are light blue-grey; busier cells go from light yellow to dark red.
  */
 class HeatmapView @JvmOverloads constructor(
     context: Context,
@@ -22,25 +23,27 @@ class HeatmapView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private val dp = resources.displayMetrics.density
-    private val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-    private val blocks = listOf("Night", "Morning", "Afternoon", "Evening")
+    private val dayLetters = listOf("M", "T", "W", "T", "F", "S", "S")
+    private val blocks = listOf("Night", "Morn", "Aftn", "Eve")
 
     private var values: List<Int> = List(28) { 0 }
 
+    private val emptyColor = Color.parseColor("#E7EEFF")
+    private val ramp = intArrayOf(
+        Color.parseColor("#FEF5AD"),
+        Color.parseColor("#FDE047"),
+        Color.parseColor("#FB923C"),
+        Color.parseColor("#EA580C"),
+        Color.parseColor("#991B1B"),
+        Color.parseColor("#7F1D1D")
+    )
+
     private val cellPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#424242")
-        textSize = 12 * dp
-    }
-    private val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 14 * dp
-        textAlign = Paint.Align.CENTER
+        color = Color.parseColor("#434653")
+        textSize = 11 * dp
     }
     private val rect = RectF()
-
-    // Light yellow -> dark red, as RGB numbers
-    private val lowColor = intArrayOf(255, 255, 204)
-    private val highColor = intArrayOf(128, 0, 38)
 
     /** Give the heatmap exactly 28 numbers. */
     fun setData(heatmapValues: List<Int>) {
@@ -49,51 +52,42 @@ class HeatmapView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** ratio 0.0 -> light yellow, 1.0 -> dark red */
-    private fun colorFor(ratio: Float): Int {
-        val r = (lowColor[0] + (highColor[0] - lowColor[0]) * ratio).toInt()
-        val g = (lowColor[1] + (highColor[1] - lowColor[1]) * ratio).toInt()
-        val b = (lowColor[2] + (highColor[2] - lowColor[2]) * ratio).toInt()
-        return Color.rgb(r, g, b)
+    private fun colorFor(value: Int, maxValue: Int): Int {
+        if (value <= 0) return emptyColor
+        val ratio = value.toFloat() / maxValue
+        return ramp[min(ramp.size - 1, (ratio * ramp.size).toInt())]
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        val leftLabelW = 44 * dp
-        val topLabelH = 28 * dp
-        val pad = 8 * dp
-        val gap = 4 * dp
+        val leftLabelW = 40 * dp
+        val topLabelH = 24 * dp
+        val gap = 5 * dp
 
-        val cellW = (width - leftLabelW - pad - gap * 3) / 4f
-        val cellH = (height - topLabelH - pad - gap * 6) / 7f
+        val cellW = (width - leftLabelW - gap * 6) / 7f
+        val cellH = (height - topLabelH - gap * 3) / 4f
         val maxValue = max(values.maxOrNull() ?: 0, 1)
 
-        // Column titles (time blocks)
+        // Column titles (days)
         labelPaint.textAlign = Paint.Align.CENTER
-        for (t in 0 until 4) {
-            val cx = leftLabelW + t * (cellW + gap) + cellW / 2
-            canvas.drawText(blocks[t], cx, topLabelH - 8 * dp, labelPaint)
+        for (d in 0 until 7) {
+            val cx = leftLabelW + d * (cellW + gap) + cellW / 2
+            canvas.drawText(dayLetters[d], cx, topLabelH - 8 * dp, labelPaint)
         }
 
-        // Row titles (days) + the coloured cells
-        labelPaint.textAlign = Paint.Align.LEFT
-        for (d in 0 until 7) {
-            val top = topLabelH + d * (cellH + gap)
-            canvas.drawText(days[d], 4 * dp, top + cellH / 2 + 4 * dp, labelPaint)
+        // Row titles (time blocks) + the coloured cells
+        for (t in 0 until 4) {
+            val top = topLabelH + t * (cellH + gap)
+            labelPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(blocks[t], 0f, top + cellH / 2 + 4 * dp, labelPaint)
 
-            for (t in 0 until 4) {
+            for (d in 0 until 7) {
                 val value = values[d * 4 + t]          // <- the index formula
-                val ratio = value.toFloat() / maxValue
-                val left = leftLabelW + t * (cellW + gap)
-
-                cellPaint.color = colorFor(ratio)
+                val left = leftLabelW + d * (cellW + gap)
+                cellPaint.color = colorFor(value, maxValue)
                 rect.set(left, top, left + cellW, top + cellH)
                 canvas.drawRoundRect(rect, 6 * dp, 6 * dp, cellPaint)
-
-                // White text on dark cells, dark text on light cells
-                numberPaint.color = if (ratio > 0.6f) Color.WHITE else Color.parseColor("#424242")
-                canvas.drawText(value.toString(), rect.centerX(), rect.centerY() + 5 * dp, numberPaint)
             }
         }
     }
