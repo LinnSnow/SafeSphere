@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from auth import get_current_device
+from auth import get_current_device, require_teen
 from database import get_device, save_heartbeat
 from models import Heartbeat
 
@@ -10,8 +10,8 @@ router = APIRouter()
 
 
 @router.post("/api/heartbeat")
-def receive_heartbeat(hb: Heartbeat, token_device: str = Depends(get_current_device)):
-    # token ka device_id aur body ka device_id same hona chahiye
+def receive_heartbeat(hb: Heartbeat, token_device: str = Depends(require_teen)):
+    # Sirf teen ka token chalega, aur token ka device_id body ke device_id jaisa hona chahiye
     if hb.device_id != token_device:
         raise HTTPException(status_code=403, detail="Token does not match device")
 
@@ -26,7 +26,7 @@ def receive_heartbeat(hb: Heartbeat, token_device: str = Depends(get_current_dev
 
 @router.get("/api/status/{device_id}")
 def get_status(device_id: str, token_device: str = Depends(get_current_device)):
-    # abhi ke liye: device apna hi status dekh sakta hai
+    # Teen ya parent, dono apne paired device ka hi status dekh sakte hain
     if device_id != token_device:
         raise HTTPException(status_code=403, detail="Token does not match device")
 

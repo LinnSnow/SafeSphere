@@ -41,6 +41,23 @@ def init_db():
             paired_at TEXT NOT NULL
         )"""
     )
+    # Har device ka token version. Unpair par badhta hai, to purane tokens band ho jate hain.
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS token_versions (
+            device_id TEXT PRIMARY KEY,
+            version INTEGER NOT NULL
+        )"""
+    )
+    # Blocked events: sirf timestamp (epoch millis UTC) aur category. Domain/URL/text kabhi nahi.
+    # PRIMARY KEY se same event dobara upload ho to duplicate nahi banta.
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS events (
+            device_id TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            PRIMARY KEY (device_id, ts, category)
+        )"""
+    )
     conn.commit()
     conn.close()
 
@@ -117,5 +134,95 @@ def save_pairing(device_id):
         "INSERT OR REPLACE INTO pairings (device_id, paired_at) VALUES (?, ?)",
         (device_id, now.isoformat()),
     )
+    conn.commit()
+    conn.close()
+
+
+def is_paired(device_id):
+    """True agar is device ka abhi koi parent se pairing hai."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT 1 FROM pairings WHERE device_id = ?", (device_id,)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def delete_pairing(device_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM pairings WHERE device_id = ?", (device_id,))
+    conn.commit()
+    conn.close()
+
+
+# ---------- token versions ----------
+
+def get_token_version(device_id):
+    """Is device ka current token version. Pehle kabhi unpair nahi hua to 0."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT version FROM token_versions WHERE device_id = ?", (device_id,)
+    ).fetchone()
+    conn.close()
+    return row["version"] if row else 0
+
+
+def bump_token_version(device_id):
+    """Version 1 badhata hai. Isse is device ke saare purane tokens invalid ho jate hain."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO token_versions (device_id, version) VALUES (?, 1)
+           ON CONFLICT(device_id) DO UPDATE SET version = version + 1""",
+        (device_id,),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT version FROM token_versions WHERE device_id = ?", (device_id,)
+    ).fetchone()
+    conn.close()
+    return row["version"]
+
+
+# ---------- events ----------
+
+def save_events(device_id, events):
+    """events = [(timestamp_millis, category), ...]. Duplicate ignore hote hain.
+    Kitne naye events sach me save hue, wo number wapas deta hai."""
+    conn = get_connection()
+    before = conn.total_changes
+    conn.executemany(
+        "INSERT OR IGNORE INTO events (device_id, ts, category) VALUES (?, ?, ?)",
+        [(device_id, ts, category) for ts, category in events],
+    )
+    conn.commit()
+    inserted = conn.total_changes - before
+    conn.close()
+    return inserted
+
+
+def get_events_between(device_id, start_ms, end_ms):
+    """start_ms se (shamil) end_ms tak (shamil nahi) ke saare event timestamps, sorted."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT ts FROM events WHERE device_id = ? AND ts >= ? AND ts < ? ORDER BY ts",
+        (device_id, start_ms, end_ms),
+    ).fetchall()
+    conn.close()
+    return [row["ts"] for row in rows]
+
+
+def delete_events(device_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM events WHERE device_id = ?", (device_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_device_data(device_id):
+    """Unpair par is device ka heartbeat record, events aur baaki bache hue pairing codes hata deta hai."""
+    conn = get_connection()
+    conn.execute("DELETE FROM devices WHERE device_id = ?", (device_id,))
+    conn.execute("DELETE FROM pair_codes WHERE device_id = ?", (device_id,))
+    conn.execute("DELETE FROM events WHERE device_id = ?", (device_id,))
     conn.commit()
     conn.close()
