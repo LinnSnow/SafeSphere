@@ -67,6 +67,11 @@ class FamilyActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // On the teen's own phone, show how THIS phone is doing (set in Protection settings).
+        // TODO: on the parent's phone, read the real status from the backend (GET /api/status/{device_id}).
+        if (AppPrefs.getRole(this) != AppPrefs.ROLE_PARENT) {
+            connected = AppPrefs.isProtectionActive(this)
+        }
         scope.launch {
             data = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
             render()
@@ -96,8 +101,8 @@ class FamilyActivity : Activity() {
             bar.setData(it.dailyCounts)
             heat.setData(it.heatmap)
         }
-        val barCard = chartCard("Blocked this week", "Past 7 days", bar, 220)
-        val heatCard = chartCard("When did it happen?", "Time slots vs. weekly cadence", heat, 340)
+        val barCard = chartCard("Blocked this week", "Past 7 days", bar, 230)
+        val heatCard = chartCard("When did it happen?", "Time slots vs. weekly cadence", heat, 190)
         if (!connected) {
             barCard.alpha = 0.4f
             heatCard.alpha = 0.4f
@@ -118,7 +123,8 @@ class FamilyActivity : Activity() {
         ).apply { layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f) }
         val gear = UiKit.roundIcon(ctx, "⚙", 40, UiKit.BLUE_SOFT, UiKit.BLUE_DARK, 20f).apply {
             setOnClickListener {
-                Toast.makeText(ctx, "Protection settings: coming soon", Toast.LENGTH_SHORT).show()
+                // TODO: parent-side settings
+                Toast.makeText(ctx, "Parent settings: coming soon", Toast.LENGTH_SHORT).show()
             }
         }
         return LinearLayout(ctx).apply {
@@ -150,7 +156,7 @@ class FamilyActivity : Activity() {
         }
         val card = UiKit.card(this).apply {
             background = UiKit.rounded(
-                Color.parseColor("#EAF8F1"), dp(16).toFloat(), Color.parseColor("#CDEBDD"), dp(1)
+                Color.parseColor("#E6F8EE"), dp(16).toFloat(), Color.parseColor("#C6EBD6"), dp(1)
             )
             addView(row)
             addView(UiKit.statusPills(ctx).also { UiKit.topMargin(ctx, it, 14) })
@@ -170,8 +176,8 @@ class FamilyActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
             setState(ShieldState.ALERT)
         }
-        val badge = UiKit.pill(ctx, "Disconnected", "#FFFFFF", "#B3261E", 11f).apply {
-            layoutParams = LinearLayout.LayoutParams(UiKit.WRAP, UiKit.WRAP).apply { leftMargin = dp(12) }
+        val badge = Icons.pill(ctx, "alert", "Disconnected", "#FFFFFF", "#BA1A1A", 11f).apply {
+            (layoutParams as LinearLayout.LayoutParams).leftMargin = dp(12)
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -188,8 +194,8 @@ class FamilyActivity : Activity() {
         )
         UiKit.topMargin(ctx, body, 6)
         val check = UiKit.button(this, "Check settings", filled = true, colorHex = UiKit.BLUE_DARK) {
-            // TODO: open the protection settings screen
-            Toast.makeText(ctx, "Protection settings: coming soon", Toast.LENGTH_SHORT).show()
+            // TODO: open parent-side troubleshooting
+            Toast.makeText(ctx, "Check settings: coming soon", Toast.LENGTH_SHORT).show()
         }
 
         val redCard = UiKit.card(this).apply {
@@ -205,8 +211,8 @@ class FamilyActivity : Activity() {
 
         val small = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(smallCard("🔋", "Battery / Low Power", "May restrict sync", true))
-            addView(smallCard("✈", "Network Offline", "Airplane mode on?", false))
+            addView(smallCard("battery", "#B45309", "Battery / Low Power", "May restrict sync", true))
+            addView(smallCard("wifi-off", UiKit.MUTED, "Network Offline", "Airplane mode on?", false))
         }
         UiKit.topMargin(this, small, 12)
 
@@ -224,7 +230,7 @@ class FamilyActivity : Activity() {
         }
     }
 
-    private fun smallCard(icon: String, title: String, sub: String, first: Boolean): LinearLayout {
+    private fun smallCard(iconName: String, colorHex: String, title: String, sub: String, first: Boolean): LinearLayout {
         val ctx = this
         val texts = UiKit.vertical(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = UiKit.dp(ctx, 8) }
@@ -238,7 +244,7 @@ class FamilyActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply {
                 if (first) rightMargin = UiKit.dp(ctx, 8)
             }
-            addView(UiKit.text(ctx, icon, 18f, UiKit.MUTED))
+            addView(Icons.icon(ctx, iconName, 20, colorHex))
             addView(texts)
         }
     }

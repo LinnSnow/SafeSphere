@@ -86,7 +86,7 @@ class PermissionStepActivity : Activity() {
 
         // ---- bottom: main button + small links ----
         val mainButton = UiKit.button(
-            this, if (step == 1) "🔑  Allow VPN access" else "🔔  Allow notification access", filled = true
+            this, if (step == 1) "Allow VPN access" else "Allow notification access", filled = true
         ) { if (step == 1) askVpn() else openNotificationSettings() }
 
         val whyLink = UiKit.text(
@@ -241,7 +241,7 @@ class PermissionStepActivity : Activity() {
         val head = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(UiKit.text(ctx, "💬 SafeSphere Intercept", 12f, UiKit.INK, bold = true).apply {
+            addView(UiKit.text(ctx, "SafeSphere Intercept", 12f, UiKit.INK, bold = true).apply {
                 layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f)
             })
             addView(UiKit.text(ctx, "Just now", 11f, UiKit.MUTED))
@@ -252,7 +252,7 @@ class PermissionStepActivity : Activity() {
             alpha = widthPercent
         }
         val mock = UiKit.vertical(ctx).apply {
-            background = UiKit.rounded(Color.parseColor("#EEF2FE"), dp(14).toFloat())
+            background = UiKit.rounded(Color.parseColor("#F0F3FF"), dp(14).toFloat())
             setPadding(dp(12), dp(12), dp(12), dp(12))
             addView(head)
             addView(UiKit.pill(ctx, "⚠ Sensitive text warning", UiKit.RED, UiKit.RED_SOFT, 11f).apply {
@@ -261,7 +261,7 @@ class PermissionStepActivity : Activity() {
             addView(bar(1f))
             addView(bar(0.7f))
             addView(UiKit.text(
-                ctx, "🔒 Only you can see this alert. Parents are never sent your texts.", 11f, UiKit.GREEN_DARK
+                ctx, "Only you can see this alert. Parents are never sent your texts.", 11f, UiKit.GREEN_DARK
             ).apply { setPadding(0, dp(10), 0, 0) })
         }
 

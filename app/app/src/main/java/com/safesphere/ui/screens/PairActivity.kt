@@ -104,7 +104,7 @@ class PairActivity : Activity() {
             addView(UiKit.text(ctx, "Clear permissions, shared controls", 14f, UiKit.INK, bold = true))
             addView(UiKit.text(ctx, "Both devices preview active protection rules openly.", 12f, UiKit.MUTED))
         }
-        val syncBox = UiKit.infoBox(ctx, "🔄", syncTexts, "#EEF2FE")
+        val syncBox = UiKit.infoBox(ctx, "🔄", syncTexts, "#F0F3FF")
         UiKit.topMargin(this, syncBox, 16)
 
         pairButton = UiKit.button(this, "Pair devices", filled = true) { submit() }

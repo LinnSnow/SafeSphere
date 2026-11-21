@@ -57,6 +57,22 @@
             android:name=".ui.screens.SetPinActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.screens.ProtectionSettingsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.screens.TextWarningActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.screens.SiteBlockedActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.screens.LimitsActivity"
+            android:exported="false" />
+
         <!-- Person 2: reads notification previews on-device so the ML model can warn the teen -->
         <service
             android:name=".ml.NotificationMonitorService"
