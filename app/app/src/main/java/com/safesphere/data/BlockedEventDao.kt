@@ -33,6 +33,7 @@ interface BlockedEventDao {
         """
     )
     suspend fun getDailyCounts(startMillis: Long, endMillis: Long): List<DayCount>
+
     @Query(
         """
         SELECT CAST(strftime('%w', timestamp / 1000, 'unixepoch', 'localtime') AS INTEGER) AS day,
@@ -44,4 +45,8 @@ interface BlockedEventDao {
         """
     )
     suspend fun getHeatmapCounts(startMillis: Long, endMillis: Long): List<HeatmapCount>
+
+    // v2: events uploader ke liye. Sirf wahi rows jo abhi tak server ko nahi bheji gayi.
+    @Query("SELECT * FROM blocked_events WHERE id > :lastId ORDER BY id ASC LIMIT :limit")
+    suspend fun getEventsAfter(lastId: Long, limit: Int): List<BlockedEvent>
 }
