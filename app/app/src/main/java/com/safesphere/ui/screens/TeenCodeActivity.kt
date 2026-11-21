@@ -155,13 +155,10 @@ class TeenCodeActivity : Activity() {
     }
 
     private fun onParentDone() {
-        // TODO (next batch): go on to Step 1 (VPN), Step 2 (notifications) and the parent PIN.
         // TODO: auto-advance when the backend tells the teen's phone that pairing is complete.
-        AppPrefs.setSetupDone(this, true)
-        Toast.makeText(this, "Setup saved", Toast.LENGTH_SHORT).show()
         startActivity(
-            Intent(this, HomeActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            Intent(this, PermissionStepActivity::class.java)
+                .putExtra(PermissionStepActivity.EXTRA_STEP, 1)
         )
     }
 

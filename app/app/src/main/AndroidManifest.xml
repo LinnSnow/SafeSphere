@@ -48,6 +48,14 @@
             android:name=".ui.screens.PairActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.screens.PermissionStepActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.screens.SetPinActivity"
+            android:exported="false" />
+
     </application>
 
 </manifest>
