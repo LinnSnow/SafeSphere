@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -55,6 +56,17 @@
         <activity
             android:name=".ui.screens.SetPinActivity"
             android:exported="false" />
+
+        <!-- Person 2: reads notification previews on-device so the ML model can warn the teen -->
+        <service
+            android:name=".ml.NotificationMonitorService"
+            android:exported="true"
+            android:label="SafeSphere Text Protection"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
     </application>
 

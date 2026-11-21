@@ -5,25 +5,26 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
 
 /**
  * Steps 1 and 2 of 2 on the teen's phone.
  *  Step 1: Allow Local Shielding -> the real Android VPN permission dialog.
- *  Step 2: Notification Safety   -> opens the system "notification access" page.
+ *  Step 2: Notification Safety   -> asks to show warnings, then opens the system "notification access" page.
  */
 class PermissionStepActivity : Activity() {
 
     companion object {
         const val EXTRA_STEP = "step"
         private const val REQ_VPN = 101
+        private const val REQ_POST_NOTIFICATIONS = 7
     }
 
     private var step = 1
@@ -126,6 +127,14 @@ class PermissionStepActivity : Activity() {
         }
         UiKit.padForSystemBars(root)
         setContentView(root)
+
+        // Android 13+: the app must ask before it can show its warning notification.
+        if (step == 2 && Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                REQ_POST_NOTIFICATIONS
+            )
+        }
     }
 
     // ---------- Step 1 ----------
