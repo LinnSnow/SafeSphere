@@ -11,21 +11,26 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.safesphere.data.ApiClient
+import com.safesphere.data.EventsUploadScheduler
 import com.safesphere.data.HeartbeatScheduler
 import com.safesphere.data.PairGenerateRequest
 import com.safesphere.data.TokenStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
 
 /**
  * Teen's phone: asks the server for a pairing code and shows it (valid 10 minutes).
- * Also saves the teen token and starts the heartbeat, as Person 4 described.
+ * Saves the teen token, starts heartbeat + events upload, then waits (polling pairState)
+ * until the parent has entered the code, and moves on to Step 1 by itself.
  */
 class TeenCodeActivity : Activity() {
 
@@ -33,6 +38,8 @@ class TeenCodeActivity : Activity() {
     private val store by lazy { TokenStore(this) }
     private var busy = false
     private var timer: CountDownTimer? = null
+    private var pollJob: Job? = null
+    private var moved = false
 
     private lateinit var boxes: CodeBoxes
     private lateinit var status: TextView
@@ -49,7 +56,7 @@ class TeenCodeActivity : Activity() {
         val title = UiKit.text(ctx, "Your pairing code", 24f, UiKit.INK, bold = true)
         UiKit.topMargin(ctx, title, 20)
         val subtitle = UiKit.text(
-            ctx, "Ask your parent to type this code on their phone.", 14f, UiKit.MUTED
+            ctx, "Ask your parent to type this code on their phone. This screen moves on by itself.", 14f, UiKit.MUTED
         )
         UiKit.topMargin(ctx, subtitle, 8)
 
@@ -70,7 +77,7 @@ class TeenCodeActivity : Activity() {
 
         newCodeButton = UiKit.button(this, "Get a new code", filled = false) { requestCode() }
         val doneButton = UiKit.button(this, "My parent entered the code  →", filled = true) {
-            onParentDone()
+            checkNow()
         }
 
         val column = UiKit.vertical(this).apply {
@@ -101,6 +108,7 @@ class TeenCodeActivity : Activity() {
         if (busy) return
         busy = true
         timer?.cancel()
+        pollJob?.cancel()
         boxes.setValue("")
         boxes.setError(false)
         setStatus("Connecting… the server can take up to a minute to wake up.", false)
@@ -110,7 +118,9 @@ class TeenCodeActivity : Activity() {
                 val res = ApiClient.apiService.pairGenerate(PairGenerateRequest(store.getOrCreateDeviceId()))
                 store.saveTeenToken(res.token)
                 HeartbeatScheduler.schedule(applicationContext)
+                EventsUploadScheduler.schedule(applicationContext)
                 showCode(res.code, res.expiresInSeconds)
+                startPolling()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: HttpException) {
@@ -133,7 +143,7 @@ class TeenCodeActivity : Activity() {
         timer = object : CountDownTimer(seconds * 1000L, 1000L) {
             override fun onTick(ms: Long) {
                 val s = (ms / 1000).toInt()
-                setStatus("⏱ Expires in %02d:%02d".format(s / 60, s % 60), false)
+                setStatus("Expires in %02d:%02d  ·  waiting for your parent…".format(s / 60, s % 60), false)
             }
 
             override fun onFinish() {
@@ -141,6 +151,70 @@ class TeenCodeActivity : Activity() {
                 setStatus("This code has expired. Tap \"Get a new code\".", true)
             }
         }.start()
+    }
+
+    /** Every 3 seconds: has the parent entered the code yet? */
+    private fun startPolling() {
+        pollJob?.cancel()
+        pollJob = scope.launch {
+            val token = store.getTeenToken() ?: return@launch
+            val deviceId = store.getOrCreateDeviceId()
+            while (isActive) {
+                delay(3000)
+                try {
+                    if (ApiClient.apiService.pairState(store.bearer(token), deviceId).paired) {
+                        goToSteps()
+                        return@launch
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: HttpException) {
+                    if (e.code() == 401) {
+                        // Our token is no longer valid: start fresh with a new device id and a new code.
+                        store.resetTeenState()
+                        requestCode()
+                        return@launch
+                    }
+                } catch (e: IOException) {
+                    // No internet right now: keep trying.
+                }
+            }
+        }
+    }
+
+    /** The manual button: check once, right now. */
+    private fun checkNow() {
+        val token = store.getTeenToken()
+        if (token == null) {
+            Toast.makeText(this, "No code yet. Tap \"Get a new code\".", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch {
+            try {
+                val paired = ApiClient.apiService.pairState(store.bearer(token), store.getOrCreateDeviceId()).paired
+                if (paired) goToSteps()
+                else Toast.makeText(
+                    this@TeenCodeActivity, "Not paired yet. Ask your parent to enter the code.", Toast.LENGTH_LONG
+                ).show()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Toast.makeText(this@TeenCodeActivity, "Couldn't check right now. Try again.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun goToSteps() {
+        if (moved) return
+        moved = true
+        timer?.cancel()
+        pollJob?.cancel()
+        Toast.makeText(this, "Paired with your parent", Toast.LENGTH_SHORT).show()
+        startActivity(
+            Intent(this, PermissionStepActivity::class.java)
+                .putExtra(PermissionStepActivity.EXTRA_STEP, 1)
+        )
+        finish()
     }
 
     private fun showFailure(message: String) {
@@ -154,16 +228,9 @@ class TeenCodeActivity : Activity() {
         status.setTextColor(Color.parseColor(if (isError) UiKit.RED else UiKit.MUTED))
     }
 
-    private fun onParentDone() {
-        // TODO: auto-advance when the backend tells the teen's phone that pairing is complete.
-        startActivity(
-            Intent(this, PermissionStepActivity::class.java)
-                .putExtra(PermissionStepActivity.EXTRA_STEP, 1)
-        )
-    }
-
     override fun onDestroy() {
         timer?.cancel()
+        pollJob?.cancel()
         scope.cancel()
         super.onDestroy()
     }

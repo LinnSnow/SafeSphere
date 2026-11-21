@@ -29,12 +29,14 @@ object AppPrefs {
     }
 
     // ---------- protection state ----------
-    // TODO: also tell Person 1's VPN service and Person 4's ProtectionState when this changes.
+    // Every change is pushed to the backend straight away (ProtectionSync -> heartbeat),
+    // and the VPN service / notification service read isProtectionActive().
 
     fun isProtectionOn(ctx: Context): Boolean = prefs(ctx).getBoolean("protection_on", true)
 
     fun setProtectionOn(ctx: Context, on: Boolean) {
         prefs(ctx).edit().putBoolean("protection_on", on).putLong("paused_until", 0L).apply()
+        ProtectionSync.push(ctx)
     }
 
     fun pausedUntil(ctx: Context): Long = prefs(ctx).getLong("paused_until", 0L)
@@ -43,13 +45,15 @@ object AppPrefs {
 
     fun pauseFor(ctx: Context, minutes: Int) {
         prefs(ctx).edit().putLong("paused_until", System.currentTimeMillis() + minutes * 60_000L).apply()
+        ProtectionSync.push(ctx)
     }
 
     fun clearPause(ctx: Context) {
         prefs(ctx).edit().putLong("paused_until", 0L).apply()
+        ProtectionSync.push(ctx)
     }
 
-    /** The one answer every part of the app should use: is filtering actually running right now? */
+    /** True only when protection is switched on AND not paused. */
     fun isProtectionActive(ctx: Context): Boolean = isProtectionOn(ctx) && !isPaused(ctx)
 
     // ---------- parent PIN ----------

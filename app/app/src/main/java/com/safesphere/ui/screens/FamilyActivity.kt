@@ -1,6 +1,7 @@
 package com.safesphere.ui.screens
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -10,7 +11,6 @@ import android.widget.ScrollView
 import android.widget.Toast
 import com.safesphere.data.AppDatabase
 import com.safesphere.data.ChartDataRepository
-import com.safesphere.data.WeeklyChartData
 import com.safesphere.ui.charts.HeatmapView
 import com.safesphere.ui.charts.WeeklyBarChartView
 import com.safesphere.ui.shield.AnimatedShieldView
@@ -23,9 +23,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Family tab: the parent's view of the teen's device.
- * Connected  -> green "Protection is ON" card.
- * No signal  -> red "Protection may be off" card, charts greyed out.
+ * Family tab.
+ *  Parent phone: real status + weekly numbers from the backend (status() and weekly()).
+ *  Teen phone:   this phone's own state and local numbers.
+ * Connected -> green "Protection is ON". Otherwise red "Protection may be off", charts greyed out.
  */
 class FamilyActivity : Activity() {
 
@@ -34,10 +35,13 @@ class FamilyActivity : Activity() {
         ChartDataRepository(AppDatabase.getInstance(this).blockedEventDao())
     }
 
-    // TODO: drive this from the heartbeat (GET /api/status/{device_id}).
-    // For the demo, long-press the "SafeSphere" title to flip between the two states.
+    private val isParent get() = AppPrefs.getRole(this) == AppPrefs.ROLE_PARENT
+
     private var connected = true
-    private var data: WeeklyChartData? = null
+    private var loaded = false
+    private var lastSeenMinutes = 0
+    private var daily: List<Int>? = null
+    private var heat: List<Int>? = null
     private lateinit var host: ScrollView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,8 +53,10 @@ class FamilyActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor(UiKit.BG))
+            // Long-press the title = demo switch between the green and red look.
             addView(UiKit.topBar(ctx, "Shield Dashboard") {
                 connected = !connected
+                loaded = true
                 Toast.makeText(
                     ctx, if (connected) "Demo: device connected" else "Demo: device disconnected",
                     Toast.LENGTH_SHORT
@@ -67,15 +73,39 @@ class FamilyActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // On the teen's own phone, show how THIS phone is doing (set in Protection settings).
-        // TODO: on the parent's phone, read the real status from the backend (GET /api/status/{device_id}).
-        if (AppPrefs.getRole(this) != AppPrefs.ROLE_PARENT) {
-            connected = AppPrefs.isProtectionActive(this)
-        }
         scope.launch {
-            data = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
-            render()
+            if (isParent) loadFromBackend() else loadLocal()
         }
+    }
+
+    private suspend fun loadFromBackend() {
+        when (val r = Session.loadParent(this)) {
+            is ParentResult.Ok -> {
+                connected = r.status?.protectionActive ?: false
+                lastSeenMinutes = r.status?.lastSeenMinutesAgo ?: 0
+                daily = r.weekly?.dailyCounts
+                heat = r.weekly?.heatmap
+                loaded = true
+                render()
+            }
+            ParentResult.Unpaired -> Session.leaveToWelcome(this)
+            ParentResult.Offline -> {
+                Toast.makeText(
+                    this, "Couldn't reach the server. Showing the last numbers.", Toast.LENGTH_LONG
+                ).show()
+                loaded = true
+                render()
+            }
+        }
+    }
+
+    private suspend fun loadLocal() {
+        connected = AppPrefs.isProtectionActive(this)
+        val d = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
+        daily = d.dailyCounts
+        heat = d.heatmap
+        loaded = true
+        render()
     }
 
     override fun onDestroy() {
@@ -88,21 +118,41 @@ class FamilyActivity : Activity() {
         host.addView(buildColumn())
     }
 
+    private fun openSettings() {
+        val target = if (isParent) ParentSettingsActivity::class.java else ProtectionSettingsActivity::class.java
+        startActivity(Intent(this, target))
+    }
+
+    private fun ago(minutes: Int): String = when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "$minutes min ago"
+        else -> "${minutes / 60} h ago"
+    }
+
     private fun buildColumn(): LinearLayout {
         val ctx = this
         val column = UiKit.vertical(this).apply {
             setPadding(UiKit.dp(ctx, 16), UiKit.dp(ctx, 8), UiKit.dp(ctx, 16), UiKit.dp(ctx, 24))
         }
+
+        if (isParent && !loaded) {
+            column.addView(UiKit.card(this).apply {
+                addView(UiKit.text(ctx, "Connecting to your teen's device…", 16f, UiKit.INK, bold = true))
+                addView(UiKit.text(
+                    ctx, "The server can take up to a minute to wake up the first time.", 13f, UiKit.MUTED
+                ).also { UiKit.topMargin(ctx, it, 6) })
+            }.also { UiKit.topMargin(ctx, it, 12) })
+            return column
+        }
+
         column.addView(if (connected) connectedSection() else disconnectedSection())
 
         val bar = WeeklyBarChartView(this)
-        val heat = HeatmapView(this)
-        data?.let {
-            bar.setData(it.dailyCounts)
-            heat.setData(it.heatmap)
-        }
+        val heatmap = HeatmapView(this)
+        daily?.let { bar.setData(it) }
+        heat?.let { heatmap.setData(it) }
         val barCard = chartCard("Blocked this week", "Past 7 days", bar, 230)
-        val heatCard = chartCard("When did it happen?", "Time slots vs. weekly cadence", heat, 190)
+        val heatCard = chartCard("When did it happen?", "Time slots vs. weekly cadence", heatmap, 190)
         if (!connected) {
             barCard.alpha = 0.4f
             heatCard.alpha = 0.4f
@@ -122,10 +172,7 @@ class FamilyActivity : Activity() {
             bold = true
         ).apply { layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f) }
         val gear = UiKit.roundIcon(ctx, "⚙", 40, UiKit.BLUE_SOFT, UiKit.BLUE_DARK, 20f).apply {
-            setOnClickListener {
-                // TODO: parent-side settings
-                Toast.makeText(ctx, "Parent settings: coming soon", Toast.LENGTH_SHORT).show()
-            }
+            setOnClickListener { openSettings() }
         }
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -145,8 +192,11 @@ class FamilyActivity : Activity() {
         val texts = UiKit.vertical(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = dp(12) }
             addView(UiKit.text(ctx, "Protection is ON", 20f, UiKit.INK, bold = true))
-            // TODO: real time from the heartbeat
-            addView(UiKit.text(ctx, "Teen's device checked in 2 min ago", 12f, UiKit.MUTED))
+            addView(UiKit.text(
+                ctx,
+                if (isParent) "Teen's device checked in ${ago(lastSeenMinutes)}" else "Protection is active on this phone",
+                12f, UiKit.MUTED
+            ))
         }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -187,15 +237,18 @@ class FamilyActivity : Activity() {
         }
         val title = UiKit.text(ctx, "Protection may be off", 22f, UiKit.RED, bold = true)
         UiKit.topMargin(ctx, title, 12)
-        val body = UiKit.text(
-            ctx,
-            "No signal from the teen's device for 6 hours. Screen time and network shields are unresponsive.",
-            13f, UiKit.INK
-        )
+
+        val bodyText = when {
+            !isParent -> "Protection is turned off or paused on this phone."
+            lastSeenMinutes >= 60 ->
+                "No signal from the teen's device for ${lastSeenMinutes / 60} hours. Screen time and network shields are unresponsive."
+            else ->
+                "The teen's device checked in ${ago(lastSeenMinutes)} and reports that protection is off or paused."
+        }
+        val body = UiKit.text(ctx, bodyText, 13f, UiKit.INK)
         UiKit.topMargin(ctx, body, 6)
         val check = UiKit.button(this, "Check settings", filled = true, colorHex = UiKit.BLUE_DARK) {
-            // TODO: open parent-side troubleshooting
-            Toast.makeText(ctx, "Check settings: coming soon", Toast.LENGTH_SHORT).show()
+            openSettings()
         }
 
         val redCard = UiKit.card(this).apply {

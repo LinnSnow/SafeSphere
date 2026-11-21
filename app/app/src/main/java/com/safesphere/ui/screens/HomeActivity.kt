@@ -62,8 +62,7 @@ class HomeActivity : Activity() {
             }
         }
         statusTitle = UiKit.text(ctx, "Protection is ON", 20f, UiKit.INK, bold = true)
-        // TODO: real "last checked" time from the heartbeat (GET /api/status/{device_id})
-        statusSub = UiKit.text(ctx, "Last checked 2 min ago", 12f, UiKit.MUTED)
+        statusSub = UiKit.text(ctx, "Active on this phone", 12f, UiKit.MUTED)
         val statusTexts = UiKit.vertical(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = dp(12) }
             addView(statusTitle)
@@ -134,6 +133,15 @@ class HomeActivity : Activity() {
     override fun onResume() {
         super.onResume()
         updateStatus()
+
+        if (AppPrefs.getRole(this) == AppPrefs.ROLE_TEEN) {
+            Session.ensureVpn(this)   // restart the VPN if the app was killed
+            scope.launch {
+                // Parent unpaired us (server said 401)? Go back to the start.
+                if (!Session.checkTeen(applicationContext)) Session.leaveToWelcome(this@HomeActivity)
+            }
+        }
+
         // Load (or reload) the numbers every time the screen comes back.
         scope.launch {
             val data = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
@@ -165,7 +173,7 @@ class HomeActivity : Activity() {
             }
             else -> {
                 statusTitle.text = "Protection is ON"
-                statusSub.text = "Last checked 2 min ago"
+                statusSub.text = "Active on this phone"
                 shield.setState(ShieldState.ON)
             }
         }
