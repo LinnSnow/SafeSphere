@@ -73,10 +73,34 @@ data class UnpairResponse(
     @SerializedName("status") val status: String
 )
 
+// ---------- v3: protection log ----------
+
+// state: "off" | "paused" | "on". until: optional, epoch millis UTC (paused ke liye).
+// Gson null fields skip karta hai, to until = null bhejne pe JSON me aayega hi nahi (server ko yahi chahiye).
+data class ProtectionEventRequest(
+    @SerializedName("state") val state: String,
+    @SerializedName("until") val until: Long? = null
+)
+
+data class ProtectionEventResponse(
+    @SerializedName("status") val status: String,
+    @SerializedName("timestamp") val timestamp: Long   // server ka time, epoch millis UTC
+)
+
+data class ProtectionLogEntry(
+    @SerializedName("state") val state: String,
+    @SerializedName("timestamp") val timestamp: Long,  // server ka time, epoch millis UTC
+    @SerializedName("until") val until: Long?
+)
+
+data class ProtectionLogResponse(
+    @SerializedName("events") val events: List<ProtectionLogEntry>
+)
+
 // ---------- Retrofit interface ----------
 // bearer parameter me poora "Bearer <token>" pass karna hai.
-// Teen calls (heartbeat, uploadEvents, pairState) me TEEN token,
-// parent calls (weekly, unpair) me PARENT token.
+// Teen calls (heartbeat, uploadEvents, pairState, sendProtectionEvent) me TEEN token,
+// parent calls (weekly, unpair, getProtectionLog) me PARENT token.
 // status() dono token ke saath chalta hai.
 // Koi bhi 401 = unpaired/revoked, app ko state reset karni chahiye.
 
@@ -127,4 +151,16 @@ interface ApiService {
     suspend fun unpair(
         @Header("Authorization") bearer: String
     ): UnpairResponse
+
+    @POST("api/protection-event")
+    suspend fun sendProtectionEvent(
+        @Header("Authorization") bearer: String,
+        @Body body: ProtectionEventRequest
+    ): ProtectionEventResponse
+
+    @GET("api/protection-log/{device_id}")
+    suspend fun getProtectionLog(
+        @Header("Authorization") bearer: String,
+        @Path("device_id") deviceId: String
+    ): ProtectionLogResponse
 }

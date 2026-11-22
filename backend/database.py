@@ -58,6 +58,21 @@ def init_db():
             PRIMARY KEY (device_id, ts, category)
         )"""
     )
+    # Protection log: teen ne protection off/paused/on kiya. Sirf state aur time, koi content nahi.
+    # ts = server ka time (epoch millis UTC). until = optional (epoch millis), paused ke liye.
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS protection_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            until INTEGER
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_protection_events_device_ts
+           ON protection_events (device_id, ts)"""
+    )
     conn.commit()
     conn.close()
 
@@ -218,11 +233,45 @@ def delete_events(device_id):
     conn.close()
 
 
+# ---------- protection log ----------
+
+def save_protection_event(device_id, state, until=None):
+    """Teen ne protection ki state badli (off / paused / on). Time server khud lagata hai.
+    Saved event ka timestamp (epoch millis UTC) wapas deta hai."""
+    ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO protection_events (device_id, ts, state, until) VALUES (?, ?, ?, ?)",
+        (device_id, ts, state, until),
+    )
+    conn.commit()
+    conn.close()
+    return ts
+
+
+def get_protection_log(device_id, limit=20):
+    """Is device ke last `limit` protection events, sabse naya pehle."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT state, ts, until FROM protection_events
+           WHERE device_id = ?
+           ORDER BY ts DESC, id DESC
+           LIMIT ?""",
+        (device_id, limit),
+    ).fetchall()
+    conn.close()
+    return [
+        {"state": row["state"], "timestamp": row["ts"], "until": row["until"]}
+        for row in rows
+    ]
+
+
 def delete_device_data(device_id):
-    """Unpair par is device ka heartbeat record, events aur baaki bache hue pairing codes hata deta hai."""
+    """Unpair par is device ka heartbeat record, events, protection log aur baaki bache hue pairing codes hata deta hai."""
     conn = get_connection()
     conn.execute("DELETE FROM devices WHERE device_id = ?", (device_id,))
     conn.execute("DELETE FROM pair_codes WHERE device_id = ?", (device_id,))
     conn.execute("DELETE FROM events WHERE device_id = ?", (device_id,))
+    conn.execute("DELETE FROM protection_events WHERE device_id = ?", (device_id,))
     conn.commit()
     conn.close()
