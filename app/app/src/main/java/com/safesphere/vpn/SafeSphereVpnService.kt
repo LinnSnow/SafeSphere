@@ -13,6 +13,8 @@ import com.safesphere.data.BlockEventLogger
 import com.safesphere.data.BlockEventLoggerImpl
 import com.safesphere.data.HeartbeatWorker
 import com.safesphere.data.ProtectionState
+import com.safesphere.ui.screens.AppPrefs
+import com.safesphere.ui.screens.WarningNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -95,13 +97,15 @@ class SafeSphereVpnService : VpnService() {
             val domain = DnsPacketParser.parse(packet) ?: return
             val query = packet.copyOfRange(ihl + 8, packet.size)
 
-            if (blocklist?.isBlocked(domain) == true) {
+            // Only block while protection is ON (not turned off, not paused from Protection settings).
+            if (AppPrefs.isProtectionActive(applicationContext) && blocklist?.isBlocked(domain) == true) {
                 Log.d("DNS", "BLOCKED: $domain")   // debug only; remove domain logging for release
                 val reply = DnsPacketParser.buildResponse(
                     packet, ihl, DnsPacketParser.buildNxDomain(query)
                 )
                 synchronized(output) { output.write(reply) }
                 blockLogger.logBlock("website")    // timestamp + category only, never the domain
+                WarningNotifier.showSiteBlocked(applicationContext)   // at most one per minute, no domain
                 return
             }
 

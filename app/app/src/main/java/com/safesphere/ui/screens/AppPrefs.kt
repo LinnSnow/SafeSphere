@@ -5,7 +5,7 @@ import android.util.Base64
 import java.security.MessageDigest
 import java.security.SecureRandom
 
-/** Small on-device memory: setup done? role? parent PIN (stored as a salted hash, never as plain text). */
+/** Small on-device memory: setup done? role? parent PIN (salted hash)? protection on/off/paused? */
 object AppPrefs {
     const val ROLE_TEEN = "teen"
     const val ROLE_PARENT = "parent"
@@ -27,6 +27,38 @@ object AppPrefs {
     fun setRole(ctx: Context, role: String) {
         prefs(ctx).edit().putString("role", role).apply()
     }
+
+    // ---------- protection state ----------
+    // Every change is saved to the local history (ProtectionLog) and pushed to the backend straight
+    // away (ProtectionSync -> heartbeat). The VPN service and notification service read isProtectionActive().
+
+    fun isProtectionOn(ctx: Context): Boolean = prefs(ctx).getBoolean("protection_on", true)
+
+    fun setProtectionOn(ctx: Context, on: Boolean) {
+        prefs(ctx).edit().putBoolean("protection_on", on).putLong("paused_until", 0L).apply()
+        ProtectionLog.add(ctx, if (on) "on" else "off")
+        ProtectionSync.push(ctx)
+    }
+
+    fun pausedUntil(ctx: Context): Long = prefs(ctx).getLong("paused_until", 0L)
+
+    fun isPaused(ctx: Context): Boolean = pausedUntil(ctx) > System.currentTimeMillis()
+
+    fun pauseFor(ctx: Context, minutes: Int) {
+        val until = System.currentTimeMillis() + minutes * 60_000L
+        prefs(ctx).edit().putLong("paused_until", until).apply()
+        ProtectionLog.add(ctx, "paused", until)
+        ProtectionSync.push(ctx)
+    }
+
+    fun clearPause(ctx: Context) {
+        prefs(ctx).edit().putLong("paused_until", 0L).apply()
+        ProtectionLog.add(ctx, "resumed")
+        ProtectionSync.push(ctx)
+    }
+
+    /** True only when protection is switched on AND not paused. */
+    fun isProtectionActive(ctx: Context): Boolean = isProtectionOn(ctx) && !isPaused(ctx)
 
     // ---------- parent PIN ----------
 

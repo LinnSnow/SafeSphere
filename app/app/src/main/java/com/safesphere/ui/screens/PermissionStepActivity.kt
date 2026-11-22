@@ -13,10 +13,11 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
+import com.safesphere.vpn.SafeSphereVpnService
 
 /**
  * Steps 1 and 2 of 2 on the teen's phone.
- *  Step 1: Allow Local Shielding -> the real Android VPN permission dialog.
+ *  Step 1: Allow Local Shielding -> the real Android VPN permission dialog, then starts the VPN service.
  *  Step 2: Notification Safety   -> asks to show warnings, then opens the system "notification access" page.
  */
 class PermissionStepActivity : Activity() {
@@ -86,7 +87,7 @@ class PermissionStepActivity : Activity() {
 
         // ---- bottom: main button + small links ----
         val mainButton = UiKit.button(
-            this, if (step == 1) "🔑  Allow VPN access" else "🔔  Allow notification access", filled = true
+            this, if (step == 1) "Allow VPN access" else "Allow notification access", filled = true
         ) { if (step == 1) askVpn() else openNotificationSettings() }
 
         val whyLink = UiKit.text(
@@ -156,7 +157,7 @@ class PermissionStepActivity : Activity() {
             background = UiKit.rounded(Color.parseColor("#EAF8F1"), dp(14).toFloat())
             setPadding(dp(12), dp(14), dp(12), dp(14))
             addView(flow)
-            addView(UiKit.pill(ctx, "🔒 Private on-device VPN loopback", UiKit.MUTED, "#FFFFFF", 11f).apply {
+            addView(Icons.pill(ctx, "lock", "Private on-device VPN loopback", UiKit.MUTED, "#FFFFFF", 11f).apply {
                 layoutParams = LinearLayout.LayoutParams(UiKit.WRAP, UiKit.WRAP).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
                     topMargin = dp(12)
@@ -208,16 +209,30 @@ class PermissionStepActivity : Activity() {
     private fun askVpn() {
         // Shows Android's own "Connection request" dialog. Returns null if already allowed.
         val intent = VpnService.prepare(this)
-        if (intent != null) startActivityForResult(intent, REQ_VPN) else goNext()
+        if (intent != null) startActivityForResult(intent, REQ_VPN) else {
+            startShield()
+            goNext()
+        }
     }
 
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_VPN) {
-            if (resultCode == RESULT_OK) goNext()
-            else Toast.makeText(this, "The VPN permission is needed to block harmful sites.", Toast.LENGTH_LONG).show()
+            if (resultCode == RESULT_OK) {
+                startShield()
+                goNext()
+            } else {
+                Toast.makeText(this, "The VPN permission is needed to block harmful sites.", Toast.LENGTH_LONG).show()
+            }
         }
+    }
+
+    /** Starts Person 1's VPN service (the on-device website filter). */
+    private fun startShield() {
+        startService(
+            Intent(this, SafeSphereVpnService::class.java).setAction(SafeSphereVpnService.ACTION_START)
+        )
     }
 
     private fun showWhyFiltering() {
@@ -241,7 +256,7 @@ class PermissionStepActivity : Activity() {
         val head = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(UiKit.text(ctx, "💬 SafeSphere Intercept", 12f, UiKit.INK, bold = true).apply {
+            addView(UiKit.text(ctx, "SafeSphere Intercept", 12f, UiKit.INK, bold = true).apply {
                 layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f)
             })
             addView(UiKit.text(ctx, "Just now", 11f, UiKit.MUTED))
@@ -252,16 +267,16 @@ class PermissionStepActivity : Activity() {
             alpha = widthPercent
         }
         val mock = UiKit.vertical(ctx).apply {
-            background = UiKit.rounded(Color.parseColor("#EEF2FE"), dp(14).toFloat())
+            background = UiKit.rounded(Color.parseColor("#F0F3FF"), dp(14).toFloat())
             setPadding(dp(12), dp(12), dp(12), dp(12))
             addView(head)
-            addView(UiKit.pill(ctx, "⚠ Sensitive text warning", UiKit.RED, UiKit.RED_SOFT, 11f).apply {
+            addView(Icons.pill(ctx, "alert", "Sensitive text warning", UiKit.RED, UiKit.RED_SOFT, 11f).apply {
                 layoutParams = LinearLayout.LayoutParams(UiKit.WRAP, UiKit.WRAP).apply { topMargin = dp(10) }
             })
             addView(bar(1f))
             addView(bar(0.7f))
             addView(UiKit.text(
-                ctx, "🔒 Only you can see this alert. Parents are never sent your texts.", 11f, UiKit.GREEN_DARK
+                ctx, "Only you can see this alert. Parents are never sent your texts.", 11f, UiKit.GREEN_DARK
             ).apply { setPadding(0, dp(10), 0, 0) })
         }
 

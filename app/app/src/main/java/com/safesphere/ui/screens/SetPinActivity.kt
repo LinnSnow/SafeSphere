@@ -74,7 +74,7 @@ class SetPinActivity : Activity() {
                 ctx, "This PIN is needed to turn protection off or pause safety filters.", 12f, UiKit.MUTED
             ))
         }
-        val safeBox = UiKit.infoBox(ctx, "🔒", safeguard, "#EEF2FE")
+        val safeBox = UiKit.infoBox(ctx, "🔒", safeguard, "#F0F3FF")
         UiKit.topMargin(ctx, safeBox, 16)
 
         val pad = Widgets.keypad(

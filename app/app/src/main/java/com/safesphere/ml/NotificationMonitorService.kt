@@ -1,17 +1,14 @@
 package com.safesphere.ml
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.content.Context
-import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import com.safesphere.data.AppDatabase
 import com.safesphere.data.BlockEventLogger
 import com.safesphere.data.BlockEventLoggerImpl
+import com.safesphere.ui.screens.AppPrefs
+import com.safesphere.ui.screens.WarningNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,9 +19,10 @@ import kotlinx.coroutines.launch
  * Listens to notifications from OTHER apps (WhatsApp, SMS, Instagram...), scores the text with
  * the on-device ML model, and if it looks adult-toned:
  *   1. logs a block event (timestamp + category "text" ONLY - never the message), and
- *   2. shows a warning notification to the teen.
+ *   2. shows a warning notification to the teen (WarningNotifier). Tapping it opens the Text Warning screen.
  *
- * The user must grant "Notification access" manually (Settings). See NotificationAccess.
+ * The message text is only handed to the Text Warning screen inside that notification's intent
+ * (in memory). It is never written to disk, the database, the logs or the network.
  */
 class NotificationMonitorService : NotificationListenerService() {
 
@@ -40,7 +38,6 @@ class NotificationMonitorService : NotificationListenerService() {
 
     override fun onCreate() {
         super.onCreate()
-        createWarningChannel()
         logger = createLogger()
     }
 
@@ -64,6 +61,7 @@ class NotificationMonitorService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return // never scan our own warnings (infinite loop!)
         if (sbn.isOngoing) return                    // music players, downloads, etc.
+        if (!AppPrefs.isProtectionActive(applicationContext)) return // protection is off or paused
 
         val notification = sbn.notification ?: return
         if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return // "3 new messages" bundles
@@ -79,7 +77,7 @@ class NotificationMonitorService : NotificationListenerService() {
                 val score = model.classify(text)
                 if (score > model.threshold) {
                     logger.logBlock("text")
-                    showWarning()
+                    WarningNotifier.showTextWarning(applicationContext, text)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "classification failed", e) // do NOT log the message text
@@ -98,26 +96,6 @@ class NotificationMonitorService : NotificationListenerService() {
         return joined.ifEmpty { null }
     }
 
-    private fun showWarning() {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val n = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert) // swap for your own icon
-            .setContentTitle("SafeSphere warning")
-            .setContentText("A message you just received may contain inappropriate content.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-        // Android 13+: if POST_NOTIFICATIONS isn't granted, this is silently dropped (no crash).
-        nm.notify(WARNING_ID, n)
-    }
-
-    private fun createWarningChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Content warnings", NotificationManager.IMPORTANCE_HIGH)
-            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
-        }
-    }
-
     override fun onDestroy() {
         scope.cancel()
         classifier?.close()
@@ -126,7 +104,5 @@ class NotificationMonitorService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "NotifMonitor"
-        private const val CHANNEL_ID = "safesphere_text_warnings"
-        private const val WARNING_ID = 4201
     }
 }

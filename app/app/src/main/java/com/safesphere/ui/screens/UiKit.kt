@@ -1,27 +1,29 @@
 package com.safesphere.ui.screens
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** Shared look for every screen: colours, cards, buttons, top bar. */
+/** Shared look for every screen: colours, cards, buttons, top bar. Colours are from the Stitch designs. */
 object UiKit {
     const val BLUE = "#3F6FE0"
-    const val BLUE_DARK = "#1F4FBF"
-    const val BLUE_SOFT = "#E4EBFC"
-    const val INK = "#1E293B"
-    const val MUTED = "#64748B"
-    const val BG = "#F8F9FF"
+    const val BLUE_DARK = "#1D55C6"
+    const val BLUE_SOFT = "#E7EEFF"
+    const val INK = "#141F2F"
+    const val MUTED = "#434653"
+    const val BG = "#F9F9FF"
     const val GREEN = "#2E9E6B"
-    const val GREEN_DARK = "#0B7A4B"
-    const val GREEN_SOFT = "#D8F5E6"
-    const val RED = "#C62828"
+    const val GREEN_DARK = "#006C44"
+    const val GREEN_SOFT = "#C6FBDE"
+    const val RED = "#BA1A1A"
     const val RED_SOFT = "#FFDAD6"
 
     const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
@@ -108,36 +110,75 @@ object UiKit {
             background = rounded(Color.parseColor(bgHex), dp(ctx, 20).toFloat())
         }
 
-    /** Round icon button, e.g. the settings gear. */
-    fun roundIcon(
-        ctx: Context, glyph: String, sizeDp: Int, bgHex: String, glyphHex: String, glyphSp: Float = 16f
-    ): TextView = TextView(ctx).apply {
-        text = glyph
-        textSize = glyphSp
-        gravity = Gravity.CENTER
-        setTextColor(Color.parseColor(glyphHex))
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.parseColor(bgHex))
+    /**
+     * Turns the old emoji strings into icon names, so older screens get real icons without edits.
+     * You can also pass "i:name" (for example "i:shield") to pick an icon directly.
+     */
+    private fun iconFor(glyph: String): String? {
+        val g = glyph.replace("\uFE0F", "").trim()
+        if (g.startsWith("i:")) return g.substring(2)
+        return when (g) {
+            "←" -> "arrow-left"
+            "⚙" -> "settings"
+            "👁" -> "eye"
+            "👤", "🙂" -> "user"
+            "🔑" -> "key"
+            "🤝" -> "users"
+            "📱" -> "smartphone"
+            "🛡" -> "shield"
+            "🚫" -> "x"
+            "🔒" -> "lock"
+            "ℹ" -> "info"
+            "⏸" -> "clock"
+            "↗" -> "trend"
+            "🔋" -> "battery"
+            "✈" -> "wifi-off"
+            "💬" -> "message"
+            "⚠" -> "alert"
+            "🔔" -> "bell"
+            else -> null
         }
-        layoutParams = LinearLayout.LayoutParams(dp(ctx, sizeDp), dp(ctx, sizeDp))
     }
 
-    /** Soft box with a small symbol on the left and any view as its body. */
-    fun infoBox(ctx: Context, glyph: String, body: View, bgHex: String = "#EEF2FE"): LinearLayout =
+    /** Round icon button, e.g. the settings gear. Emoji glyphs are drawn as icons. */
+    fun roundIcon(
+        ctx: Context, glyph: String, sizeDp: Int, bgHex: String, glyphHex: String, glyphSp: Float = 16f
+    ): View {
+        val name = iconFor(glyph)
+        if (name != null) return Icons.circle(ctx, name, sizeDp, bgHex, glyphHex)
+        return TextView(ctx).apply {
+            text = glyph
+            textSize = glyphSp
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor(glyphHex))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor(bgHex))
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(ctx, sizeDp), dp(ctx, sizeDp))
+        }
+    }
+
+    /** Soft box with a small icon on the left and any view as its body. */
+    fun infoBox(ctx: Context, glyph: String, body: View, bgHex: String = "#F0F3FF"): LinearLayout =
         LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = rounded(Color.parseColor(bgHex), dp(ctx, 12).toFloat())
             setPadding(dp(ctx, 14), dp(ctx, 12), dp(ctx, 14), dp(ctx, 12))
-            addView(text(ctx, glyph, 18f, BLUE_DARK))
+            val name = iconFor(glyph)
+            if (name != null) {
+                addView(Icons.icon(ctx, name, 20, BLUE_DARK))
+            } else {
+                addView(text(ctx, glyph, 18f, BLUE_DARK))
+            }
             body.layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(ctx, 12) }
             addView(body)
         }
 
     /** The two small labels under the status: "On-device loop active" and "Zero-cloud snooping". */
     fun statusPills(ctx: Context): LinearLayout {
-        fun weighted(p: TextView, last: Boolean) = p.apply {
+        fun weighted(p: LinearLayout, last: Boolean) = p.apply {
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply {
                 if (!last) rightMargin = dp(ctx, 6)
@@ -145,21 +186,23 @@ object UiKit {
         }
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(weighted(pill(ctx, "● On-device loop active", GREEN_DARK, GREEN_SOFT, 11f), false))
-            addView(weighted(pill(ctx, "🔒 Zero-cloud snooping", MUTED, "#EEF1F6", 11f), true))
+            addView(weighted(Icons.pill(ctx, "", "● On-device loop active", GREEN_DARK, GREEN_SOFT, 11f), false))
+            addView(weighted(Icons.pill(ctx, "lock", "Zero-cloud snooping", MUTED, "#E7EEFF", 11f), true))
         }
     }
 
-    /** Top bar: logo, "SafeSphere" + subtitle, bell, profile. Optional long-press on the title (demo switch). */
+    /**
+     * Top bar: logo, "SafeSphere" + subtitle, bell (Alerts), profile (Account).
+     * The bell and profile only work once setup is finished.
+     * Optional long-press on the title (demo tools).
+     */
     fun topBar(ctx: Context, subtitle: String, onTitleLongPress: (() -> Unit)? = null): LinearLayout {
-        val logo = TextView(ctx).apply {
-            text = "S"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-            background = rounded(Color.parseColor(BLUE), dp(ctx, 10).toFloat())
+        val logo = FrameLayout(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(dp(ctx, 36), dp(ctx, 36))
+            background = rounded(Color.parseColor(BLUE_SOFT), dp(ctx, 10).toFloat())
+            addView(IconView(ctx, "shield-check", BLUE_DARK).apply {
+                layoutParams = FrameLayout.LayoutParams(dp(ctx, 20), dp(ctx, 20), Gravity.CENTER)
+            })
         }
         val titles = vertical(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(ctx, 10) }
@@ -169,14 +212,28 @@ object UiKit {
                 setOnLongClickListener { onTitleLongPress(); true }
             }
         }
+        val bell = Icons.icon(ctx, "bell", 22, "#737685").apply {
+            layoutParams = LinearLayout.LayoutParams(dp(ctx, 22), dp(ctx, 22)).apply {
+                leftMargin = dp(ctx, 8)
+                rightMargin = dp(ctx, 14)
+            }
+        }
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(ctx, 16), dp(ctx, 8), dp(ctx, 16), dp(ctx, 8))
             addView(logo)
             addView(titles)
-            addView(text(ctx, "🔔", 20f, MUTED).apply { setPadding(dp(ctx, 8), 0, dp(ctx, 12), 0) })
-            addView(roundIcon(ctx, "👤", 36, BLUE, "#FFFFFF", 16f))
+            addView(bell.apply {
+                if (AppPrefs.isSetupDone(ctx)) setOnClickListener {
+                    ctx.startActivity(Intent(ctx, AlertsActivity::class.java))
+                }
+            })
+            addView(Icons.circle(ctx, "user", 36, "#6056F0", "#FFFFFF").apply {
+                if (AppPrefs.isSetupDone(ctx)) setOnClickListener {
+                    ctx.startActivity(Intent(ctx, AccountActivity::class.java))
+                }
+            })
         }
     }
 
