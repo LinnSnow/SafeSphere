@@ -32,6 +32,7 @@ class EventsUpload(BaseModel):
 
 class ProtectionEventUpload(BaseModel):
     # Teen phone sirf state bhejta hai. device_id token se aata hai, time server lagata hai.
+    # "removed" = teen ne app ka device admin hataya (uninstall warning ke liye).
     # until = optional, epoch millis (UTC), "paused" ke liye kab tak.
-    state: Literal["off", "paused", "on"]
+    state: Literal["off", "paused", "on", "removed"]
     until: Optional[int] = Field(default=None, gt=0)
