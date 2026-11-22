@@ -1,6 +1,7 @@
 package com.safesphere.ui.screens
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -17,14 +18,21 @@ import com.safesphere.ui.shield.AnimatedShieldView
 import com.safesphere.ui.shield.ShieldState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Family tab.
- *  Parent phone: real status + weekly numbers from the backend (status() and weekly()).
+ *  Parent phone: real status + weekly numbers from the backend, refreshed every 10 seconds.
+ *                When the teen's protection turns off (or back on) a pop-up appears.
  *  Teen phone:   this phone's own state and local numbers.
  * Connected -> green "Protection is ON". Otherwise red "Protection may be off", charts greyed out.
  */
@@ -39,9 +47,11 @@ class FamilyActivity : Activity() {
 
     private var connected = true
     private var loaded = false
+    private var offlineShown = false
     private var lastSeenMinutes = 0
     private var daily: List<Int>? = null
     private var heat: List<Int>? = null
+    private var pollJob: Job? = null
     private lateinit var host: ScrollView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,39 +83,80 @@ class FamilyActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        scope.launch {
-            if (isParent) loadFromBackend() else loadLocal()
+        if (isParent) ParentWatcher.schedule(this)   // background check while the app is closed
+        pollJob?.cancel()
+        pollJob = scope.launch {
+            while (isActive) {
+                if (isParent) loadFromBackend() else loadLocal()
+                delay(10_000)
+            }
         }
+    }
+
+    override fun onPause() {
+        pollJob?.cancel()
+        super.onPause()
     }
 
     private suspend fun loadFromBackend() {
         when (val r = Session.loadParent(this)) {
             is ParentResult.Ok -> {
-                connected = r.status?.protectionActive ?: false
-                lastSeenMinutes = r.status?.lastSeenMinutesAgo ?: 0
-                daily = r.weekly?.dailyCounts
-                heat = r.weekly?.heatmap
+                offlineShown = false
+                val s = r.status
+                val newConnected = s?.protectionActive ?: false
+                val newSeen = s?.lastSeenMinutesAgo ?: 0
+                val newDaily = r.weekly?.dailyCounts
+                val newHeat = r.weekly?.heatmap
+                val changed = !loaded || newConnected != connected || newSeen != lastSeenMinutes ||
+                        newDaily != daily || newHeat != heat
+                connected = newConnected
+                lastSeenMinutes = newSeen
+                daily = newDaily
+                heat = newHeat
                 loaded = true
-                render()
+                if (s != null) announce(ParentWatcher.apply(this, s.protectionActive))
+                if (changed) render()
             }
             ParentResult.Unpaired -> Session.leaveToWelcome(this)
             ParentResult.Offline -> {
-                Toast.makeText(
-                    this, "Couldn't reach the server. Showing the last numbers.", Toast.LENGTH_LONG
-                ).show()
-                loaded = true
-                render()
+                if (!offlineShown) {
+                    offlineShown = true
+                    Toast.makeText(
+                        this, "Couldn't reach the server. Showing the last numbers.", Toast.LENGTH_LONG
+                    ).show()
+                }
+                if (!loaded) {
+                    loaded = true
+                    render()
+                }
             }
         }
     }
 
     private suspend fun loadLocal() {
-        connected = AppPrefs.isProtectionActive(this)
+        val newConnected = AppPrefs.isProtectionActive(this)
         val d = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
+        val changed = !loaded || newConnected != connected || d.dailyCounts != daily || d.heatmap != heat
+        connected = newConnected
         daily = d.dailyCounts
         heat = d.heatmap
         loaded = true
-        render()
+        if (changed) render()
+    }
+
+    /** Pop-up when the parent's phone notices a change. */
+    private fun announce(kind: String?) {
+        if (kind == null || isFinishing) return
+        val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        if (kind == "off") {
+            AlertDialog.Builder(this)
+                .setTitle("Protection turned off")
+                .setMessage("Your teen's phone reports that protection was turned off or paused. Noticed at $time.")
+                .setPositiveButton("OK", null)
+                .show()
+        } else {
+            Toast.makeText(this, "Protection is back on (noticed at $time)", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onDestroy() {
@@ -113,9 +164,12 @@ class FamilyActivity : Activity() {
         super.onDestroy()
     }
 
+    /** Rebuilds the screen but keeps the scroll position. */
     private fun render() {
+        val y = host.scrollY
         host.removeAllViews()
         host.addView(buildColumn())
+        host.post { host.scrollTo(0, y) }
     }
 
     private fun openSettings() {
@@ -247,8 +301,8 @@ class FamilyActivity : Activity() {
         }
         val body = UiKit.text(ctx, bodyText, 13f, UiKit.INK)
         UiKit.topMargin(ctx, body, 6)
-        val check = UiKit.button(this, "Check settings", filled = true, colorHex = UiKit.BLUE_DARK) {
-            openSettings()
+        val check = UiKit.button(this, if (isParent) "See history" else "Check settings", filled = true, colorHex = UiKit.BLUE_DARK) {
+            if (isParent) startActivity(Intent(ctx, AlertsActivity::class.java)) else openSettings()
         }
 
         val redCard = UiKit.card(this).apply {

@@ -24,6 +24,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -104,7 +105,14 @@ class TeenCodeActivity : Activity() {
         requestCode()
     }
 
-    private fun requestCode() {
+    /** The server's own reason, e.g. {"detail": "Device already paired"}. Empty if there is none. */
+    private fun detailOf(e: HttpException): String = try {
+        JSONObject(e.response()?.errorBody()?.string() ?: "").optString("detail", "")
+    } catch (ex: Exception) {
+        ""
+    }
+
+    private fun requestCode(retryAfterConflict: Boolean = true) {
         if (busy) return
         busy = true
         timer?.cancel()
@@ -114,6 +122,7 @@ class TeenCodeActivity : Activity() {
         setStatus("Connecting… the server can take up to a minute to wake up.", false)
         newCodeButton.alpha = 0.5f
         scope.launch {
+            var retry = false
             try {
                 val res = ApiClient.apiService.pairGenerate(PairGenerateRequest(store.getOrCreateDeviceId()))
                 store.saveTeenToken(res.token)
@@ -124,16 +133,24 @@ class TeenCodeActivity : Activity() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: HttpException) {
-                showFailure(
-                    if (e.code() == 503) "The server is busy. Please try again in a moment."
-                    else "Something went wrong (error ${e.code()}). Please try again."
-                )
+                if (e.code() == 409 && retryAfterConflict) {
+                    // This device id is already linked to a parent. Start fresh with a NEW device id.
+                    store.resetTeenState()
+                    retry = true
+                } else {
+                    val why = detailOf(e)
+                    showFailure(
+                        if (e.code() == 503) "The server is busy. Please try again in a moment."
+                        else "Something went wrong (error ${e.code()}${if (why.isNotBlank()) ": $why" else ""}). Please try again."
+                    )
+                }
             } catch (e: IOException) {
                 showFailure("Couldn't reach the server. Check your internet and try again.")
             } finally {
                 busy = false
                 newCodeButton.alpha = 1f
             }
+            if (retry) requestCode(false)
         }
     }
 

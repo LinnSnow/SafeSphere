@@ -74,6 +74,8 @@
             android:exported="false" />
 
         <activity android:name=".ui.screens.ParentSettingsActivity" android:exported="false" />
+        <activity android:name=".ui.screens.AlertsActivity" android:exported="false" />
+        <activity android:name=".ui.screens.AccountActivity" android:exported="false" />
 
         <!-- Person 2: reads notification previews on-device so the ML model can warn the teen -->
         <service

@@ -67,6 +67,8 @@ object Session {
 
     fun resetParent(ctx: Context) {
         TokenStore(ctx.applicationContext).resetParentState()
+        ParentWatcher.cancel(ctx)
+        ParentWatcher.reset(ctx)
         AppPrefs.setSetupDone(ctx, false)
     }
 

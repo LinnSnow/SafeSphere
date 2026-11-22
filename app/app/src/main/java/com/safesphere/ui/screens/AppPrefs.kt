@@ -29,13 +29,14 @@ object AppPrefs {
     }
 
     // ---------- protection state ----------
-    // Every change is pushed to the backend straight away (ProtectionSync -> heartbeat),
-    // and the VPN service / notification service read isProtectionActive().
+    // Every change is saved to the local history (ProtectionLog) and pushed to the backend straight
+    // away (ProtectionSync -> heartbeat). The VPN service and notification service read isProtectionActive().
 
     fun isProtectionOn(ctx: Context): Boolean = prefs(ctx).getBoolean("protection_on", true)
 
     fun setProtectionOn(ctx: Context, on: Boolean) {
         prefs(ctx).edit().putBoolean("protection_on", on).putLong("paused_until", 0L).apply()
+        ProtectionLog.add(ctx, if (on) "on" else "off")
         ProtectionSync.push(ctx)
     }
 
@@ -44,12 +45,15 @@ object AppPrefs {
     fun isPaused(ctx: Context): Boolean = pausedUntil(ctx) > System.currentTimeMillis()
 
     fun pauseFor(ctx: Context, minutes: Int) {
-        prefs(ctx).edit().putLong("paused_until", System.currentTimeMillis() + minutes * 60_000L).apply()
+        val until = System.currentTimeMillis() + minutes * 60_000L
+        prefs(ctx).edit().putLong("paused_until", until).apply()
+        ProtectionLog.add(ctx, "paused", until)
         ProtectionSync.push(ctx)
     }
 
     fun clearPause(ctx: Context) {
         prefs(ctx).edit().putLong("paused_until", 0L).apply()
+        ProtectionLog.add(ctx, "resumed")
         ProtectionSync.push(ctx)
     }
 

@@ -11,6 +11,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.safesphere.data.AppDatabase
 import com.safesphere.data.ChartDataRepository
+import com.safesphere.data.TokenStore
 import com.safesphere.data.WeeklyChartData
 import com.safesphere.ui.charts.HeatmapView
 import com.safesphere.ui.charts.TrendLineChartView
@@ -105,6 +106,42 @@ class HomeActivity : Activity() {
             Nav.open(ctx, Tab.SHARED)
         }
 
+        // ---- demo card: preview the alert screens and send test notifications ----
+        // TODO: remove before the final version.
+        val tryCard = UiKit.card(this).apply {
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(UiKit.vertical(ctx).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f)
+                    addView(UiKit.text(ctx, "See how alerts look", 17f, UiKit.INK, bold = true))
+                    addView(UiKit.text(ctx, "Preview what your teen sees", 12f, UiKit.MUTED))
+                })
+                addView(UiKit.pill(ctx, "Demo", UiKit.BLUE_DARK, UiKit.BLUE_SOFT))
+            })
+            addView(Icons.softButton(ctx, "message", "Preview text warning", Pal.CONTAINER, Pal.PRIMARY_DARK) {
+                startActivity(Intent(ctx, TextWarningActivity::class.java))
+            })
+            addView(Icons.softButton(ctx, "globe", "Preview blocked site", Pal.CONTAINER, Pal.PRIMARY_DARK) {
+                startActivity(Intent(ctx, SiteBlockedActivity::class.java))
+            })
+            addView(Icons.softButton(ctx, "bell", "Send test notifications", Pal.CONTAINER, Pal.PRIMARY_DARK) {
+                if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9)
+                } else {
+                    WarningNotifier.showTextWarning(ctx, null)
+                    WarningNotifier.showSiteBlocked(ctx, force = true)
+                    android.widget.Toast.makeText(
+                        ctx, "Sent. Pull down the notification panel.", android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            })
+        }
+        UiKit.topMargin(this, tryCard, 16)
+
         val column = UiKit.vertical(this).apply {
             setPadding(dp(16), dp(8), dp(16), dp(24))
             addView(statusCard)
@@ -112,6 +149,7 @@ class HomeActivity : Activity() {
             addView(trendCard)
             addView(heatmapCard)
             addView(mutual)
+            addView(tryCard)
             addView(seeButton)
         }
 
@@ -214,7 +252,8 @@ class HomeActivity : Activity() {
                     0 -> startActivity(Intent(this, TextWarningActivity::class.java))
                     1 -> startActivity(Intent(this, SiteBlockedActivity::class.java))
                     2 -> {
-                        AppPrefs.setSetupDone(this, false)
+                        Session.resetTeen(this)   // new device id, no teen token, stops background work
+                        TokenStore(this).resetParentState()
                         AppPrefs.setProtectionOn(this, true)
                         startActivity(
                             Intent(this, WelcomeActivity::class.java)

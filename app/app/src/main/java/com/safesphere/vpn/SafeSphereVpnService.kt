@@ -14,6 +14,7 @@ import com.safesphere.data.BlockEventLoggerImpl
 import com.safesphere.data.HeartbeatWorker
 import com.safesphere.data.ProtectionState
 import com.safesphere.ui.screens.AppPrefs
+import com.safesphere.ui.screens.WarningNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -104,6 +105,7 @@ class SafeSphereVpnService : VpnService() {
                 )
                 synchronized(output) { output.write(reply) }
                 blockLogger.logBlock("website")    // timestamp + category only, never the domain
+                WarningNotifier.showSiteBlocked(applicationContext)   // at most one per minute, no domain
                 return
             }
 

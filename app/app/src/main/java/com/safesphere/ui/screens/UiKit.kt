@@ -1,6 +1,7 @@
 package com.safesphere.ui.screens
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -190,7 +191,11 @@ object UiKit {
         }
     }
 
-    /** Top bar: logo, "SafeSphere" + subtitle, bell, profile. Optional long-press on the title (demo switch). */
+    /**
+     * Top bar: logo, "SafeSphere" + subtitle, bell (Alerts), profile (Account).
+     * The bell and profile only work once setup is finished.
+     * Optional long-press on the title (demo tools).
+     */
     fun topBar(ctx: Context, subtitle: String, onTitleLongPress: (() -> Unit)? = null): LinearLayout {
         val logo = FrameLayout(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(dp(ctx, 36), dp(ctx, 36))
@@ -219,8 +224,16 @@ object UiKit {
             setPadding(dp(ctx, 16), dp(ctx, 8), dp(ctx, 16), dp(ctx, 8))
             addView(logo)
             addView(titles)
-            addView(bell)
-            addView(Icons.circle(ctx, "user", 36, "#6056F0", "#FFFFFF"))
+            addView(bell.apply {
+                if (AppPrefs.isSetupDone(ctx)) setOnClickListener {
+                    ctx.startActivity(Intent(ctx, AlertsActivity::class.java))
+                }
+            })
+            addView(Icons.circle(ctx, "user", 36, "#6056F0", "#FFFFFF").apply {
+                if (AppPrefs.isSetupDone(ctx)) setOnClickListener {
+                    ctx.startActivity(Intent(ctx, AccountActivity::class.java))
+                }
+            })
         }
     }
 
