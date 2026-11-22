@@ -61,7 +61,7 @@ object ParentWatcher {
     }
 
     /** Notification on the parent's phone. No content, only the state. */
-    fun notifyChange(ctx: Context, kind: String) {
+    fun notifyChange(ctx: Context, kind: String, detail: String? = null) {
         val app = ctx.applicationContext
         if (Build.VERSION.SDK_INT >= 33 &&
             app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -82,7 +82,7 @@ object ParentWatcher {
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(if (off) "Protection turned off" else "Protection is back on")
             .setContentText(
-                if (off) "SafeSphere is off or paused on your teen's phone."
+                detail ?: if (off) "SafeSphere is off or paused on your teen's phone."
                 else "SafeSphere protection is active again on your teen's phone."
             )
             .setPriority(NotificationCompat.PRIORITY_HIGH)

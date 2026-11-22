@@ -31,8 +31,8 @@ import java.util.Locale
 
 /**
  * Family tab.
- *  Parent phone: real status + weekly numbers from the backend, refreshed every 10 seconds.
- *                When the teen's protection turns off (or back on) a pop-up appears.
+ *  Parent phone: real status, weekly numbers and protection log from the backend, refreshed every 10 seconds.
+ *                When the teen's protection turns off or is paused (or comes back) a pop-up appears.
  *  Teen phone:   this phone's own state and local numbers.
  * Connected -> green "Protection is ON". Otherwise red "Protection may be off", charts greyed out.
  */
@@ -49,6 +49,7 @@ class FamilyActivity : Activity() {
     private var loaded = false
     private var offlineShown = false
     private var lastSeenMinutes = 0
+    private var lastEvent: ProtectionLog.Entry? = null
     private var daily: List<Int>? = null
     private var heat: List<Int>? = null
     private var pollJob: Job? = null
@@ -107,12 +108,14 @@ class FamilyActivity : Activity() {
                 val newSeen = s?.lastSeenMinutesAgo ?: 0
                 val newDaily = r.weekly?.dailyCounts
                 val newHeat = r.weekly?.heatmap
+                val newEvent = Session.loadProtectionLog(this)?.firstOrNull()
                 val changed = !loaded || newConnected != connected || newSeen != lastSeenMinutes ||
-                        newDaily != daily || newHeat != heat
+                        newDaily != daily || newHeat != heat || newEvent != lastEvent
                 connected = newConnected
                 lastSeenMinutes = newSeen
                 daily = newDaily
                 heat = newHeat
+                lastEvent = newEvent
                 loaded = true
                 if (s != null) announce(ParentWatcher.apply(this, s.protectionActive))
                 if (changed) render()
@@ -147,15 +150,16 @@ class FamilyActivity : Activity() {
     /** Pop-up when the parent's phone notices a change. */
     private fun announce(kind: String?) {
         if (kind == null || isFinishing) return
-        val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        val now = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        val detail = lastEvent?.let { ProtectionLog.describe(it) }
         if (kind == "off") {
             AlertDialog.Builder(this)
-                .setTitle("Protection turned off")
-                .setMessage("Your teen's phone reports that protection was turned off or paused. Noticed at $time.")
+                .setTitle("Protection is off")
+                .setMessage(detail ?: "Your teen's phone reports that protection was turned off or paused. Noticed at $now.")
                 .setPositiveButton("OK", null)
                 .show()
         } else {
-            Toast.makeText(this, "Protection is back on (noticed at $time)", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, detail ?: "Protection is back on (noticed at $now)", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -292,10 +296,12 @@ class FamilyActivity : Activity() {
         val title = UiKit.text(ctx, "Protection may be off", 22f, UiKit.RED, bold = true)
         UiKit.topMargin(ctx, title, 12)
 
+        val event = lastEvent
         val bodyText = when {
             !isParent -> "Protection is turned off or paused on this phone."
             lastSeenMinutes >= 60 ->
                 "No signal from the teen's device for ${lastSeenMinutes / 60} hours. Screen time and network shields are unresponsive."
+            event != null && event.kind != "on" -> ProtectionLog.describe(event) + "."
             else ->
                 "The teen's device checked in ${ago(lastSeenMinutes)} and reports that protection is off or paused."
         }

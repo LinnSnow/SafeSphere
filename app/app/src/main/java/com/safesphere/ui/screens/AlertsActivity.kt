@@ -59,7 +59,7 @@ class AlertsActivity : Activity() {
         }
         UiKit.padForSystemBars(root)
         setContentView(root)
-        render(null, null)
+        render(null, null, emptyList())
     }
 
     override fun onResume() {
@@ -70,27 +70,34 @@ class AlertsActivity : Activity() {
     private suspend fun load() {
         var daily: List<Int>? = null
         var heat: List<Int>? = null
+        var history: List<ProtectionLog.Entry> = emptyList()
         if (isParent) {
             when (val r = Session.loadParent(this)) {
                 is ParentResult.Ok -> {
                     daily = r.weekly?.dailyCounts
                     heat = r.weekly?.heatmap
+                    // Exact history from the server; if it can't be reached, what this phone noticed.
+                    history = Session.loadProtectionLog(this)
+                        ?: ProtectionLog.recent(this, 10, ProtectionLog.WATCH)
                 }
                 ParentResult.Unpaired -> {
                     Session.leaveToWelcome(this)
                     return
                 }
-                ParentResult.Offline -> {}
+                ParentResult.Offline -> {
+                    history = ProtectionLog.recent(this, 10, ProtectionLog.WATCH)
+                }
             }
         } else {
             val d = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
             daily = d.dailyCounts
             heat = d.heatmap
+            history = ProtectionLog.recent(this, 10, ProtectionLog.LOCAL)
         }
-        render(daily, heat)
+        render(daily, heat, history)
     }
 
-    private fun render(daily: List<Int>?, heat: List<Int>?) {
+    private fun render(daily: List<Int>?, heat: List<Int>?, history: List<ProtectionLog.Entry>) {
         val ctx = this
         fun dp(v: Int) = UiKit.dp(ctx, v)
 
@@ -120,27 +127,22 @@ class AlertsActivity : Activity() {
             addView(busiest)
         }
 
-        // ---- protection history (this phone) ----
-        run {
-            val history = UiKit.card(this).apply {
+        // ---- protection history ----
+        val historyCard = UiKit.card(this).apply {
+            addView(UiKit.text(
+                ctx, if (isParent) "Your teen's protection history" else "Protection history",
+                17f, UiKit.INK, bold = true
+            ))
+            if (history.isEmpty()) {
                 addView(UiKit.text(
-                    ctx, if (isParent) "Your teen's protection history" else "Protection history",
-                    17f, UiKit.INK, bold = true
-                ))
-                val entries = ProtectionLog.recent(
-                    ctx, 10, if (isParent) ProtectionLog.WATCH else ProtectionLog.LOCAL
-                )
-                if (entries.isEmpty()) {
-                    addView(UiKit.text(
-                        ctx, "No changes yet. Protection has stayed on.", 14f, UiKit.MUTED
-                    ).also { UiKit.topMargin(ctx, it, 6) })
-                } else {
-                    entries.forEach { addView(historyRow(it).also { r -> UiKit.topMargin(ctx, r, 12) }) }
-                }
+                    ctx, "No changes yet. Protection has stayed on.", 14f, UiKit.MUTED
+                ).also { UiKit.topMargin(ctx, it, 6) })
+            } else {
+                history.forEach { addView(historyRow(it).also { r -> UiKit.topMargin(ctx, r, 12) }) }
             }
-            UiKit.topMargin(this, history, 16)
-            column.addView(history)
         }
+        UiKit.topMargin(this, historyCard, 16)
+        column.addView(historyCard)
 
         val note = UiKit.infoBox(
             ctx, "🔒",
@@ -156,8 +158,11 @@ class AlertsActivity : Activity() {
         host.addView(column)
     }
 
-    private fun time(ms: Long): String =
+    private fun day(ms: Long): String =
         SimpleDateFormat("EEE, h:mm a", Locale.getDefault()).format(Date(ms))
+
+    private fun clock(ms: Long): String =
+        SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(ms))
 
     private fun historyRow(e: ProtectionLog.Entry): LinearLayout {
         val ctx = this
@@ -166,11 +171,11 @@ class AlertsActivity : Activity() {
         val fg: String
         val title: String
         when (e.kind) {
-            "off" -> {
-                icon = "power"; bg = Pal.RED_SOFT; fg = Pal.RED
-                title = if (isParent) "Protection turned off or paused" else "Protection turned off"
+            "off" -> { icon = "power"; bg = Pal.RED_SOFT; fg = Pal.RED; title = "Protection turned off" }
+            "paused" -> {
+                icon = "clock"; bg = "#FEF3C7"; fg = "#B45309"
+                title = if (e.until > 0L) "Paused until ${clock(e.until)}" else "Protection paused"
             }
-            "paused" -> { icon = "clock"; bg = "#FEF3C7"; fg = "#B45309"; title = "Paused until ${time(e.until)}" }
             "on" -> { icon = "shield-check"; bg = Pal.GREEN_SOFT; fg = Pal.GREEN_DARK; title = "Protection turned on" }
             else -> { icon = "shield-check"; bg = Pal.GREEN_SOFT; fg = Pal.GREEN_DARK; title = "Protection resumed" }
         }
@@ -181,7 +186,7 @@ class AlertsActivity : Activity() {
             addView(UiKit.vertical(ctx).apply {
                 layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = UiKit.dp(ctx, 12) }
                 addView(UiKit.text(ctx, title, 14f, UiKit.INK, bold = true))
-                addView(UiKit.text(ctx, time(e.at), 12f, UiKit.MUTED))
+                addView(UiKit.text(ctx, day(e.at), 12f, UiKit.MUTED))
             })
         }
     }

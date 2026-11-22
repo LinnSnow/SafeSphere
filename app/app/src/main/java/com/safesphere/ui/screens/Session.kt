@@ -65,6 +65,24 @@ object Session {
         }
     }
 
+    /** Parent phone: the teen's protection log from the server (newest first), or null if it can't be loaded. */
+    suspend fun loadProtectionLog(ctx: Context): List<ProtectionLog.Entry>? = withContext(Dispatchers.IO) {
+        val store = TokenStore(ctx.applicationContext)
+        val token = store.getParentToken()
+        val id = store.getPairedDeviceId()
+        if (token == null || id == null) return@withContext null
+        try {
+            ApiClient.apiService.getProtectionLog(store.bearer(token), id).events.map {
+                ProtectionLog.Entry(it.state, it.timestamp, it.until ?: 0L)
+            }
+        } catch (e: HttpException) {
+            if (e.code() == 401) resetParent(ctx)
+            null
+        } catch (e: IOException) {
+            null
+        }
+    }
+
     fun resetParent(ctx: Context) {
         TokenStore(ctx.applicationContext).resetParentState()
         ParentWatcher.cancel(ctx)
