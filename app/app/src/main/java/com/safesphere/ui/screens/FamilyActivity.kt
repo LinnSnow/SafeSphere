@@ -50,6 +50,7 @@ class FamilyActivity : Activity() {
     private var offlineShown = false
     private var lastSeenMinutes = 0
     private var lastEvent: ProtectionLog.Entry? = null
+    private var history: List<ProtectionLog.Entry> = emptyList()
     private var daily: List<Int>? = null
     private var heat: List<Int>? = null
     private var pollJob: Job? = null
@@ -108,13 +109,18 @@ class FamilyActivity : Activity() {
                 val newSeen = s?.lastSeenMinutesAgo ?: 0
                 val newDaily = r.weekly?.dailyCounts
                 val newHeat = r.weekly?.heatmap
-                val newEvent = Session.loadProtectionLog(this)?.firstOrNull()
+                // Exact history from the server; if it can't be loaded, keep what we had (or what this phone noticed).
+                val newHistory = Session.loadProtectionLog(this)
+                    ?: history.ifEmpty { ProtectionLog.recent(this, 10, ProtectionLog.WATCH) }
+                val newEvent = newHistory.firstOrNull()
                 val changed = !loaded || newConnected != connected || newSeen != lastSeenMinutes ||
-                        newDaily != daily || newHeat != heat || newEvent != lastEvent
+                        newDaily != daily || newHeat != heat || newEvent != lastEvent ||
+                        newHistory != history
                 connected = newConnected
                 lastSeenMinutes = newSeen
                 daily = newDaily
                 heat = newHeat
+                history = newHistory
                 lastEvent = newEvent
                 loaded = true
                 if (s != null) announce(ParentWatcher.apply(this, s.protectionActive))
@@ -139,10 +145,13 @@ class FamilyActivity : Activity() {
     private suspend fun loadLocal() {
         val newConnected = AppPrefs.isProtectionActive(this)
         val d = withContext(Dispatchers.IO) { repository.getWeeklyChartData() }
-        val changed = !loaded || newConnected != connected || d.dailyCounts != daily || d.heatmap != heat
+        val newHistory = ProtectionLog.recent(this, 10, ProtectionLog.LOCAL)
+        val changed = !loaded || newConnected != connected || d.dailyCounts != daily || d.heatmap != heat ||
+                newHistory != history
         connected = newConnected
         daily = d.dailyCounts
         heat = d.heatmap
+        history = newHistory
         loaded = true
         if (changed) render()
     }
@@ -204,6 +213,7 @@ class FamilyActivity : Activity() {
         }
 
         column.addView(if (connected) connectedSection() else disconnectedSection())
+        column.addView(historyCard())
 
         val bar = WeeklyBarChartView(this)
         val heatmap = HeatmapView(this)
@@ -218,6 +228,64 @@ class FamilyActivity : Activity() {
         column.addView(barCard)
         column.addView(heatCard)
         return column
+    }
+
+    private fun clock(ms: Long): String =
+        SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(ms))
+
+    private fun dayTime(ms: Long): String =
+        SimpleDateFormat("EEE, h:mm a", Locale.getDefault()).format(Date(ms))
+
+    /** "Protection history": when protection was turned off, paused (until when) and turned back on. */
+    private fun historyCard(): LinearLayout {
+        val ctx = this
+        val card = UiKit.card(ctx)
+        card.addView(UiKit.text(
+            ctx, if (isParent) "Your teen's protection history" else "Protection history",
+            17f, UiKit.INK, bold = true
+        ))
+        card.addView(UiKit.text(ctx, "When protection was turned off, paused or back on", 12f, UiKit.MUTED))
+        val shown = history.take(5)
+        if (shown.isEmpty()) {
+            card.addView(UiKit.text(
+                ctx, "No changes yet. Protection has stayed on.", 14f, UiKit.MUTED
+            ).also { UiKit.topMargin(ctx, it, 10) })
+        } else {
+            shown.forEach { card.addView(historyRow(it).also { r -> UiKit.topMargin(ctx, r, 12) }) }
+            card.addView(UiKit.button(ctx, "See full history", filled = false, colorHex = UiKit.BLUE_DARK) {
+                startActivity(Intent(ctx, AlertsActivity::class.java))
+            }.also { UiKit.topMargin(ctx, it, 12) })
+        }
+        UiKit.topMargin(ctx, card, 16)
+        return card
+    }
+
+    private fun historyRow(e: ProtectionLog.Entry): LinearLayout {
+        val ctx = this
+        val icon: String
+        val bg: String
+        val fg: String
+        val title: String
+        when (e.kind) {
+            "off" -> { icon = "power"; bg = Pal.RED_SOFT; fg = Pal.RED; title = "Protection turned off" }
+            "paused" -> {
+                icon = "clock"; bg = "#FEF3C7"; fg = "#B45309"
+                title = if (e.until > 0L) "Paused until ${clock(e.until)}" else "Protection paused"
+            }
+            "removed" -> { icon = "alert"; bg = Pal.RED_SOFT; fg = Pal.RED; title = "SafeSphere was removed" }
+            "on" -> { icon = "shield-check"; bg = Pal.GREEN_SOFT; fg = Pal.GREEN_DARK; title = "Protection turned on" }
+            else -> { icon = "shield-check"; bg = Pal.GREEN_SOFT; fg = Pal.GREEN_DARK; title = "Protection resumed" }
+        }
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(Icons.circle(ctx, icon, 36, bg, fg))
+            addView(UiKit.vertical(ctx).apply {
+                layoutParams = LinearLayout.LayoutParams(0, UiKit.WRAP, 1f).apply { leftMargin = UiKit.dp(ctx, 12) }
+                addView(UiKit.text(ctx, title, 14f, UiKit.INK, bold = true))
+                addView(UiKit.text(ctx, dayTime(e.at), 12f, UiKit.MUTED))
+            })
+        }
     }
 
     private fun statusRow(active: Boolean): LinearLayout {
